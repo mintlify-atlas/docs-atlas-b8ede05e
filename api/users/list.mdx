@@ -1,0 +1,69 @@
+---
+title: "GET /api/usuarios — List All Users"
+sidebarTitle: "List Users"
+description: "GET /api/usuarios — returns a list of all registered users. Each user is returned as a UsuarioSalidaDTO containing their username and email address."
+---
+
+The List Users endpoint retrieves every registered user in the Spring Community platform. Use it to populate user directories, admin dashboards, or any view that requires a full enumeration of accounts. Because the response is shaped by `UsuarioSalidaDTO`, sensitive data such as passwords, roles, and tokens are stripped before the array is returned — only the public-facing `nombre` and `email` fields are included.
+
+## Endpoint
+
+```
+GET /api/usuarios
+```
+
+**Access:** Public — no authentication token is required.
+
+---
+
+## Request parameters
+
+This endpoint accepts no path parameters, query parameters, or request body.
+
+---
+
+## Response
+
+Returns a JSON array of `UsuarioSalidaDTO` objects. An empty array (`[]`) is returned when no users exist.
+
+<ResponseField name="nombre" type="string">
+  The user's chosen username. Between 6 and 20 characters.
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  The user's registered email address. Unique across all accounts.
+</ResponseField>
+
+### Example response
+
+```json
+[
+  {
+    "nombre": "alice99",
+    "email": "alice@example.com"
+  },
+  {
+    "nombre": "bobsmith",
+    "email": "bob@example.com"
+  },
+  {
+    "nombre": "carlos22",
+    "email": "carlos@example.com"
+  }
+]
+```
+
+---
+
+## Example request
+
+```bash
+curl -X GET https://api.springcommunity.example/api/usuarios \
+  -H "Accept: application/json"
+```
+
+---
+
+<Note>
+  Passwords and tokens are never included in the response. The API returns only `nombre` and `email` — all other fields on the internal `Usuario` entity (password hash, role, JWT tokens, and associated participant profile) are excluded by the `UsuarioSalidaDTO` projection.
+</Note>

@@ -1,0 +1,124 @@
+---
+title: "GET /api/eventos/{id} — Get Event Details"
+sidebarTitle: "Get Event"
+description: "GET /api/eventos/{id} — retrieves full event details including participant IDs, admin IDs, and all event metadata as an EventoDTO object."
+---
+
+The event detail endpoint returns the complete `EventoDTO` representation of a single event. Unlike the listing endpoints, which return lightweight `EventoPrincipalDTO` summaries, this response includes all editable metadata fields as well as the full lists of participant IDs and administrator IDs associated with the event. Use this endpoint whenever you need to render an event detail view or pre-populate an edit form.
+
+---
+
+## Endpoint
+
+```
+GET /api/eventos/{id}
+```
+
+**Requires a valid JWT access token** sent in the `Authorization` header.
+
+---
+
+## Path Parameters
+
+<ParamField path="id" type="integer" required>
+  The event's unique numeric database ID. This value is returned as `id` in every listing or creation response.
+</ParamField>
+
+---
+
+## Response
+
+Returns a single `EventoDTO` JSON object.
+
+<ResponseField name="id" type="Long" required>
+  The event's unique numeric identifier.
+</ResponseField>
+
+<ResponseField name="nombreEvento" type="string" required>
+  The display name of the event. Never blank; maximum 255 characters.
+</ResponseField>
+
+<ResponseField name="tipoEvento" type="string">
+  An optional type or category label for the event. Maximum 255 characters. `null` if not set.
+</ResponseField>
+
+<ResponseField name="fechaEvento" type="string">
+  The scheduled date of the event in ISO 8601 format (`YYYY-MM-DD`). `null` if no date was provided.
+</ResponseField>
+
+<ResponseField name="informacion" type="string">
+  A free-text description or additional information about the event. `null` if not set.
+</ResponseField>
+
+<ResponseField name="imagenEvento" type="string">
+  The server-side filename of the event's banner image. `null` if no image was uploaded.
+</ResponseField>
+
+<ResponseField name="privado" type="boolean" required>
+  When `true`, the event is marked as private and should not be displayed in public listings.
+</ResponseField>
+
+<ResponseField name="oculto" type="boolean" required>
+  When `true`, the event is hidden entirely from all views except for its direct participants.
+</ResponseField>
+
+<ResponseField name="maxNumParticipantes" type="integer" required>
+  The maximum number of participants allowed. Range: `0`–`255`. The default is `255`.
+</ResponseField>
+
+<ResponseField name="participantesEvento" type="array of Long" required>
+  A list of participant IDs (database primary keys) that are enrolled in this event.
+</ResponseField>
+
+<ResponseField name="administradores" type="array of Long" required>
+  A list of participant IDs that have administrator privileges over this event. Every administrator is also present in `participantesEvento`.
+</ResponseField>
+
+---
+
+## Response Example
+
+```json
+{
+  "id": 1,
+  "nombreEvento": "Spring Boot Community Meetup",
+  "tipoEvento": "meetup",
+  "fechaEvento": "2025-09-20",
+  "informacion": "Monthly gathering for Spring Boot developers. All levels welcome.",
+  "imagenEvento": "meetup-banner.png",
+  "privado": false,
+  "oculto": false,
+  "maxNumParticipantes": 50,
+  "participantesEvento": [3, 7, 12, 19],
+  "administradores": [3]
+}
+```
+
+---
+
+## Error Responses
+
+| Status | Description |
+|--------|-------------|
+| `401 Unauthorized` | The `Authorization` header is missing, the token has expired, or the token signature is invalid. |
+| `404 Not Found` | No event exists with the supplied `id`. |
+
+### 404 Example
+
+```json
+{
+  "status": 404,
+  "mensaje": "Evento no encontrado",
+  "timestamp": 1718467200000
+}
+```
+
+---
+
+## curl Example
+
+```bash
+curl --request GET \
+  --url http://localhost:8080/api/eventos/1 \
+  --header 'Authorization: Bearer <your_access_token>'
+```

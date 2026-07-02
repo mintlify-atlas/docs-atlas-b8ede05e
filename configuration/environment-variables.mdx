@@ -1,0 +1,108 @@
+---
+title: "Environment Variables Reference for Spring Community"
+sidebarTitle: "Environment Variables"
+description: "Complete reference for all environment variables used by Spring Community, including database connection, JWT secrets, token expiry, and storage settings."
+---
+
+Spring Community is configured entirely through environment variables and `application.properties`. All required secrets — specifically the database password and the JWT signing key — must be present in the environment at startup; the application will fail to start if either is missing, since no default value is provided for them.
+
+## Required Variables
+
+These two variables have no default value and must always be explicitly set.
+
+<ParamField path="DB_PASSWORD" type="string" required>
+  The password for the PostgreSQL database user. Maps to `spring.datasource.password` in `application.properties`. There is no default — omitting this variable causes a startup failure.
+</ParamField>
+
+<ParamField path="JWT_SECRET" type="string" required>
+  A base64-encoded HMAC signing key used to sign and verify all JWT access and refresh tokens. Must be a sufficiently long random string to be cryptographically secure. There is no default — omitting this variable causes a startup failure.
+</ParamField>
+
+## Database Variables
+
+The following variables control the PostgreSQL data source. `DB_URL` and `DB_USER` have sensible local defaults; `DB_PASSWORD` is always required.
+
+| Variable | Default | Description |
+|---|---|---|
+| `DB_URL` | `jdbc:postgresql://localhost:5432/communitydb` | Full JDBC connection URL for the PostgreSQL instance. In Docker Compose this is overridden to `jdbc:postgresql://postgres:5432/communitydb` to target the `postgres` service. |
+| `DB_USER` | `postgres` | PostgreSQL login username. Maps to `spring.datasource.username`. |
+| `DB_PASSWORD` | *(none)* | PostgreSQL login password. Maps to `spring.datasource.password`. **Required.** |
+| `spring.datasource.driver-class-name` | `org.postgresql.Driver` | JDBC driver class. Fixed in `application.properties`; not overridable via environment. |
+
+<Note>
+  When running with Docker Compose, the `app` service sets `SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/communitydb` and `SPRING_DATASOURCE_USERNAME=postgres` to connect to the companion `postgres` container. The local defaults in `application.properties` are only used when running outside of Docker.
+</Note>
+
+## JWT Variables
+
+Spring Community issues two token types: a short-lived access token and a long-lived refresh token. Both are signed with the same `JWT_SECRET`.
+
+| Variable | Default | Description |
+|---|---|---|
+| `JWT_SECRET` | *(none)* | Base64-encoded HMAC secret key. **Required.** |
+| `JWT_EXPIRATION` | `3600000` | Access token time-to-live in milliseconds. Default is **1 hour** (3 600 000 ms). |
+| `JWT_REFRESH_EXPIRATION` | `604800000` | Refresh token time-to-live in milliseconds. Default is **7 days** (604 800 000 ms). |
+
+These values map to the following `application.properties` bindings:
+
+```properties
+jwt.secret=${JWT_SECRET}
+jwt.expiration=${JWT_EXPIRATION:3600000}
+jwt.refresh.expiration=${JWT_REFRESH_EXPIRATION:604800000}
+```
+
+## Application Variables
+
+The remaining properties govern JPA schema management, file upload limits, and image storage. They all have safe defaults and are rarely changed in development.
+
+| Property | Default | Description |
+|---|---|---|
+| `spring.jpa.hibernate.ddl-auto` | `update` | Hibernate DDL strategy. `update` creates or modifies tables on startup to match your entity classes without dropping existing data. |
+| `spring.servlet.multipart.max-file-size` | `5MB` | Maximum size for a single uploaded file (event banners and profile images). |
+| `spring.servlet.multipart.max-request-size` | `5MB` | Maximum size for an entire multipart HTTP request. |
+| `storage.location` | `images` | Local filesystem directory where uploaded images are stored, relative to the application working directory. |
+
+## Docker Compose `.env` Example
+
+When running with Docker Compose, create a `.env` file in the project root. Docker Compose automatically reads this file and substitutes the variables into `docker-compose.yml`.
+
+```bash
+# .env  — never commit this file to version control
+
+# PostgreSQL
+DB_PASSWORD=supersecretdbpassword
+
+# Spring datasource (used by the app service via SPRING_DATASOURCE_PASSWORD)
+SPRING_DATASOURCE_PASSWORD=supersecretdbpassword
+
+# JWT signing key — generate with: openssl rand -base64 64
+JWT_SECRET=dGhpcyBpcyBhIHZlcnkgbG9uZyBhbmQgc2VjdXJlIHNlY3JldCBrZXkgZm9yIEpXVA==
+
+# Optional overrides (defaults shown)
+JWT_EXPIRATION=3600000
+JWT_REFRESH_EXPIRATION=604800000
+```
+
+The `docker-compose.yml` passes these into the `app` service like so:
+
+```yaml
+services:
+  app:
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRATION=36000000
+      - JWT_REFRESH_EXPIRATION=604800000
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/communitydb
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD}
+
+  postgres:
+    environment:
+      - POSTGRES_DB=communitydb
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+```
+
+<Warning>
+  Never commit `JWT_SECRET` or `DB_PASSWORD` to version control. Add `.env` to your `.gitignore` immediately. Exposing these values allows anyone to forge valid authentication tokens or gain direct access to your database.
+</Warning>

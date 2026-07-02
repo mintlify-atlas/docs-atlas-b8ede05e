@@ -1,0 +1,66 @@
+---
+title: "POST /auth/logout — Revoke All User Tokens"
+sidebarTitle: "Logout"
+description: "POST /auth/logout — revokes all active tokens for the authenticated user, ending the session. Requires a valid access token in the Authorization header."
+---
+
+The logout endpoint ends the current user's session by revoking **all** active tokens associated with their account — not just the token used in the request. Both the access token and the refresh token are marked as expired and revoked in the database, preventing them from being used for any further authenticated requests. After a successful logout the Security context is cleared server-side and the client should discard both tokens locally.
+
+## Endpoint
+
+```
+POST /auth/logout
+```
+
+**Auth required:** A valid **ACCESS-type** token in the `Authorization` header.
+
+---
+
+## Request Headers
+
+<ParamField header="Authorization" type="string" required>
+  Must be in the format `Bearer <accessToken>` where `<accessToken>` is the `access_token` value received from a previous `/auth/login`, `/auth/crear`, or `/auth/refresh` response.
+</ParamField>
+
+---
+
+## Response
+
+A `200 OK` response with an **empty body** on success. No JSON payload is returned.
+
+---
+
+## Error Responses
+
+| Status | Condition |
+|--------|-----------|
+| `401 Unauthorized` | The `Authorization` header is missing, the token does not start with `Bearer `, the token has an invalid signature, or the token has already been revoked or expired. |
+
+### Error Response Body
+
+```json
+{
+  "status": 401,
+  "mensaje": "Token inválido",
+  "timestamp": 1700000000000
+}
+```
+
+---
+
+## curl Example
+
+```bash
+curl -X POST http://localhost:8080/auth/logout \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...your_access_token_here"
+```
+
+---
+
+<Note>
+  Logout revokes **all** active tokens for the user, including the refresh token. The client must discard both the `access_token` and `refresh_token` from local storage after calling this endpoint. Attempting to call `/auth/refresh` with the old refresh token after logout will result in a `401 Unauthorized` response.
+</Note>
+
+<Tip>
+  Because logout is handled by Spring Security's built-in logout mechanism at `/auth/logout`, the HTTP method must be `POST`. Sending a `GET` or `DELETE` request to this path will not trigger the logout handler and will return a `403` or `404` response depending on your security configuration.
+</Tip>

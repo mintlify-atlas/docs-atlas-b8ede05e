@@ -1,0 +1,113 @@
+---
+title: "PUT /api/usuarios/modificar — Update Your Username"
+sidebarTitle: "Update User"
+description: "PUT /api/usuarios/modificar — updates the authenticated user's username. The name must be 6-20 characters. Requires a valid JWT access token."
+---
+
+The Update User endpoint allows an authenticated user to change their own username. Only the `nombre` field is processed by this endpoint — email and password changes are handled through separate authentication flows and cannot be modified here. The new username must be between 6 and 20 characters and must not already be taken by another account. Because the request body is deserialized using `@JsonIgnoreProperties(ignoreUnknown = true)`, any extra fields sent are silently discarded.
+
+Internally, updating `nombre` also propagates the change to the associated `Participante` profile via the `cambiarNombre()` method on the `Usuario` entity, keeping both records in sync.
+
+## Endpoint
+
+```
+PUT /api/usuarios/modificar
+```
+
+**Access:** Requires a valid JWT **access token** in the `Authorization` header.
+
+---
+
+## Headers
+
+<ParamField header="Authorization" type="string" required>
+  A valid JWT access token obtained from the authentication endpoint. Must follow the `Bearer <accessToken>` scheme.
+
+  Example: `Bearer eyJhbGciOiJIUzI1NiJ9...`
+</ParamField>
+
+---
+
+## Request body
+
+The request body must be valid JSON. Only `nombre` is acted upon by this endpoint; `password` and `email` fields are accepted in the payload (because `UsuarioEntradaDTO` defines them) but are ignored during processing.
+
+<ParamField body="nombre" type="string" required>
+  The new username for the authenticated account. Must be between 6 and 20 characters (inclusive). Must be unique — no other registered user may already have this username.
+</ParamField>
+
+### Example request body
+
+```json
+{
+  "nombre": "newusername"
+}
+```
+
+---
+
+## Response
+
+Returns the updated user as a `UsuarioSalidaDTO` object.
+
+<ResponseField name="nombre" type="string">
+  The user's updated username.
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  The user's email address (unchanged by this endpoint).
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "nombre": "newusername",
+  "email": "alice@example.com"
+}
+```
+
+---
+
+## Error responses
+
+| HTTP status | Condition |
+|---|---|
+| `400 Bad Request` | Validation failure — `nombre` is blank, fewer than 6 characters, or more than 20 characters. |
+| `404 Not Found` | The authenticated user could not be located in the database. |
+| `401 Unauthorized` | The `Authorization` header is missing, the token has expired, or the token signature is invalid. |
+
+### Example error response body
+
+```json
+{
+  "status": 400,
+  "mensaje": "size must be between 6 and 20",
+  "timestamp": 1717000000000
+}
+```
+
+```json
+{
+  "status": 401,
+  "mensaje": "La sesión ha expirado",
+  "timestamp": 1717000000000
+}
+```
+
+---
+
+## Example request
+
+```bash
+curl -X PUT https://api.springcommunity.example/api/usuarios/modificar \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{"nombre": "newusername"}'
+```
+
+---
+
+<Note>
+  This endpoint also updates the associated `Participante` record's display name. The `cambiarNombre()` method on the `Usuario` entity checks whether a linked participant exists and, if so, sets `nombreParticipante` to the same value, ensuring both the authentication identity and the community profile stay in sync.
+</Note>

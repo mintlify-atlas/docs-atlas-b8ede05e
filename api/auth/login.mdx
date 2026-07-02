@@ -1,0 +1,98 @@
+---
+title: "POST /auth/login — Authenticate and Get Tokens"
+sidebarTitle: "Login"
+description: "POST /auth/login — authenticates an existing user by username and password, returning a fresh JWT access token and refresh token pair."
+---
+
+The login endpoint authenticates a registered user by verifying their username and password against the stored credentials. On a successful authentication it revokes any previously issued tokens for that user and returns a fresh JWT access token together with a new refresh token, ensuring that only one active session exists at a time.
+
+## Endpoint
+
+```
+POST /auth/login
+```
+
+**Auth required:** None — this endpoint is public.
+
+---
+
+## Request Body
+
+<ParamField body="nombre" type="string" required>
+  The user's **username** — the `nombre` field set during registration. Authentication is performed by username, not by email address.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  The user's account password in plain text. The server validates it against the stored BCrypt hash.
+</ParamField>
+
+### Request Example
+
+```json
+{
+  "nombre": "cristian94",
+  "password": "securePass1"
+}
+```
+
+---
+
+## Response
+
+A `200 OK` response with a JSON body containing both tokens.
+
+<ResponseField name="access_token" type="string">
+  A signed JWT access token. Include this in the `Authorization: Bearer <token>` header for all protected requests. Default TTL: **1 hour** (configurable via `JWT_EXPIRATION`).
+</ResponseField>
+
+<ResponseField name="refresh_token" type="string">
+  A signed JWT refresh token. Use this with `POST /auth/refresh` to obtain a new token pair once the access token expires. Default TTL: **7 days** (configurable via `JWT_REFRESH_EXPIRATION`).
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjEsIm5vbWJyZSI6ImNyaXN0aWFuOTQiLCJ0aXBvVXNvIjoiQUNDRVNTIiwicm9sZXMiOlsiUk9MRV9VU0VSIl0sImp0aSI6ImFiY2QtMTIzNCIsInN1YiI6ImNyaXN0aWFuOTQiLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6MTcwMDAwMzYwMH0.signature",
+  "refresh_token": "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjEsIm5vbWJyZSI6ImNyaXN0aWFuOTQiLCJ0aXBvVXNvIjoiUkVGUkVTSCIsInJvbGVzIjpbIlJPTEVfVVNFUiJdLCJqdGkiOiJ4eXotNTY3OCIsInN1YiI6ImNyaXN0aWFuOTQiLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6MTcwMDYwNDgwMH0.signature"
+}
+```
+
+---
+
+## Error Responses
+
+| Status | Condition |
+|--------|-----------|
+| `400 Bad Request` | Missing required fields — either `nombre` or `password` is blank or absent in the request body. |
+| `404 Not Found` | No user with the given `nombre` exists in the database. |
+| `401 Unauthorized` | The provided password does not match the stored credentials for the given username. |
+
+### Error Response Body
+
+```json
+{
+  "status": 404,
+  "mensaje": "Usuario no encontrado",
+  "timestamp": 1700000000000
+}
+```
+
+---
+
+## curl Example
+
+```bash
+curl -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nombre": "cristian94",
+    "password": "securePass1"
+  }'
+```
+
+---
+
+<Tip>
+  Logging in **revokes all previously issued tokens** for the user before creating the new pair. If you have multiple clients using the same account, they will all be signed out when a new login occurs. Each client should handle `401` responses by redirecting the user to the login screen.
+</Tip>

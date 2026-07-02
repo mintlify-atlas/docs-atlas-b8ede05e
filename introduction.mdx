@@ -1,0 +1,66 @@
+---
+title: "Spring Community: Community Platform REST API"
+sidebarTitle: "Introduction"
+description: "Spring Community is a Spring Boot 4 REST API backend providing event management, real-time WebSocket chat, participant social graphs, and JWT authentication for community platforms."
+---
+
+Spring Community is a production-ready REST API built with Spring Boot 4 and Java 25, designed to power the backend of modern community platforms. It handles everything from secure user registration and authentication with short-lived JWT access tokens and long-lived refresh tokens, to full event lifecycle management with optional image uploads, real-time STOMP/WebSocket chat, and a participant social graph. Whether you are building a local meetup site, an online interest community, or an internal company hub, Spring Community gives you a structured, security-first foundation you can deploy in minutes using Docker Compose.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="JWT Authentication" icon="lock">
+    Stateless authentication using HMAC-signed JWTs (jjwt 0.12.6). Every protected endpoint requires a Bearer token. A dedicated `/auth/refresh` endpoint lets clients renew access tokens without re-logging in.
+  </Card>
+  <Card title="Event Management" icon="calendar">
+    Full CRUD for community events via `/api/eventos`. Events support optional cover-image uploads (multipart/form-data, up to 5 MB) and are scoped to the authenticated participant who created them.
+  </Card>
+  <Card title="Real-Time Chat" icon="message">
+    Spring WebSocket with STOMP protocol powers the in-app messaging layer. Clients connect to the WebSocket broker and subscribe to message channels for live, bi-directional communication.
+  </Card>
+  <Card title="Participant Social Graph" icon="users">
+    A dedicated participants controller manages the social layer — follower/following relationships and membership associations between users and events.
+  </Card>
+  <Card title="Image Uploads" icon="image">
+    Multipart file upload support is built into both the event-creation and event-update flows. Uploaded images are stored in the configurable `storage.location` directory (default: `images/`). The maximum file size is 5 MB per request.
+  </Card>
+  <Card title="Docker-Ready Deployment" icon="docker">
+    A `docker-compose.yml` ships with the project and wires the Spring Boot application together with a PostgreSQL 15 container. Hibernate DDL auto-update creates the schema on first boot — no manual SQL migrations required.
+  </Card>
+</CardGroup>
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | Spring Boot 4 |
+| Language | Java 25 |
+| Security | Spring Security + jjwt 0.12.6 (HMAC JWT) |
+| Persistence | Spring Data JPA + Hibernate |
+| Database | PostgreSQL 15 |
+| Real-time | Spring WebSocket (STOMP) |
+| Code generation | Lombok 1.18.46 + MapStruct 1.6.3 |
+| Build tool | Apache Maven 3 (Maven Wrapper included) |
+| Containerisation | Docker + Docker Compose v2 |
+
+## API Surface Overview
+
+Spring Community exposes five REST controllers and one WebSocket controller, organised around the core domain objects of the platform:
+
+- **AuthController** (`/auth`) — public endpoints for account creation (`POST /auth/crear`), login (`POST /auth/login`), and token refresh (`POST /auth/refresh`). No Bearer token is required for these routes.
+- **UsersController** (`/api/usuarios`) — authenticated endpoints for reading and updating user profiles.
+- **EventoController** (`/api/eventos`) — authenticated CRUD for community events, including multipart image upload on create and update.
+- **ParticipantesController** (`/api/participantes`) — manages the social graph: following, followers, and event participation records.
+- **MensajesController** (`/api/mensajes`) — REST endpoints for retrieving message history within a channel.
+- **WebSocket Controller** — STOMP message broker endpoint at `/ws`, enabling real-time messaging between connected clients.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Register a user, log in, and make your first authenticated API call in under 5 minutes.
+  </Card>
+  <Card title="Deployment" icon="server" href="/deployment">
+    Deploy Spring Community and PostgreSQL with Docker Compose, including all required environment variables.
+  </Card>
+</CardGroup>

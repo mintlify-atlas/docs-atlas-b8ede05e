@@ -1,0 +1,169 @@
+---
+title: "Deploy Spring Community with Docker Compose"
+sidebarTitle: "Deployment"
+description: "Deploy Spring Community and PostgreSQL 15 locally or to production using Docker Compose. Covers environment variables, port configuration, and volume setup."
+---
+
+Spring Community ships with two deployment paths: a Docker Compose setup that orchestrates the Spring Boot application and PostgreSQL 15 together in isolated containers, and a direct Maven Wrapper run for developers who prefer a local database. Both approaches rely on the same set of environment variables and produce an identical API surface. Docker Compose is recommended for the fastest, most reproducible setup.
+
+## Prerequisites
+
+- **Docker 24+** with the Docker Engine running.
+- **Docker Compose v2** — included with Docker Desktop on macOS and Windows, and available as the `docker compose` plugin on Linux.
+
+No local Java or Maven installation is required when using Docker Compose — the Maven Wrapper runs inside the container.
+
+## Docker Compose Setup
+
+The `docker-compose.yml` at the root of the repository defines two services: `app` (the Spring Boot API) and `postgres` (the database). Here is the complete file:
+
+```yaml
+services:
+  app:
+    build: .
+    container_name: community-app
+    ports:
+      - "8080:8080"
+    environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRATION=36000000
+      - JWT_REFRESH_EXPIRATION=604800000
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/communitydb
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD}
+      - SPRING_DEVTOOLS_RESTART_ENABLED=true
+    volumes:
+      - .:/app
+      - ~/.m2:/root/.m2
+      - /app/target
+    working_dir: /app
+    command: ./mvnw spring-boot:run
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    environment:
+      - POSTGRES_DB=communitydb
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts:/scripts
+      - ./files:/files
+
+volumes:
+  postgres_data:
+```
+
+**Service details:**
+
+- **`app`** — builds from the local `Dockerfile`, exposes the Spring Boot API on port **8080**, and mounts the project root and local Maven cache (`.m2`) into the container so that the Maven Wrapper can resolve dependencies without downloading them again on every restart. The service starts only after the `postgres` service is up.
+- **`postgres`** — runs PostgreSQL 15 Alpine, creates a database named `communitydb` on first boot, and persists data to the named volume `postgres_data`. Note that the host port is **5433** (mapped to internal container port 5432), so local clients should connect to `localhost:5433`.
+
+## Required Environment Variables
+
+Set these variables before running `docker compose up`. Variables marked **required** have no default and will cause the application to fail to start if omitted.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `JWT_SECRET` | ✅ Required | — | Base64-encoded HMAC secret key used to sign and verify JWTs. Must be sufficiently long (≥ 64 bytes before encoding) for security. |
+| `SPRING_DATASOURCE_PASSWORD` | ✅ Required | — | Password for the PostgreSQL `postgres` user inside the `app` container. Must match `DB_PASSWORD`. |
+| `DB_PASSWORD` | ✅ Required | — | Password set on the PostgreSQL container itself (`POSTGRES_PASSWORD`). Must match `SPRING_DATASOURCE_PASSWORD`. |
+| `JWT_EXPIRATION` | Optional | `3600000` (1 hour) | Access token lifetime in milliseconds. Overridden to `36000000` (10 hours) in `docker-compose.yml`. |
+| `JWT_REFRESH_EXPIRATION` | Optional | `604800000` (7 days) | Refresh token lifetime in milliseconds. |
+
+### Creating a `.env` file
+
+Docker Compose automatically loads a `.env` file in the same directory as `docker-compose.yml`. Create one to avoid exporting variables manually each time:
+
+```bash
+# .env  — do NOT commit this file to source control
+JWT_SECRET=bXlTdXBlclNlY3JldEtleVRoYXRJc0F0TGVhc3Q2NENoYXJzTG9uZw==
+SPRING_DATASOURCE_PASSWORD=changeme
+DB_PASSWORD=changeme
+```
+
+Then start both services with:
+
+```bash
+docker compose up --build
+```
+
+The `--build` flag rebuilds the `app` image. On subsequent starts where the source has not changed you can omit it:
+
+```bash
+docker compose up
+```
+
+To run in the background, add the `-d` (detach) flag:
+
+```bash
+docker compose up -d
+```
+
+The API will be available at `http://localhost:8080` once you see `Started CommunityApplication` in the `community-app` container logs.
+
+## Manual Build (No Docker)
+
+If you have Java 25 and PostgreSQL 15 installed locally, you can run the application directly with the Maven Wrapper. Export the required environment variables in your shell first:
+
+```bash
+export JWT_SECRET="bXlTdXBlclNlY3JldEtleVRoYXRJc0F0TGVhc3Q2NENoYXJzTG9uZw=="
+export DB_PASSWORD="changeme"
+
+./mvnw spring-boot:run
+```
+
+By default, `application.properties` resolves the datasource URL from `DB_URL` (falling back to `jdbc:postgresql://localhost:5432/communitydb`) and the username from `DB_USER` (falling back to `postgres`). Override them if your local setup differs:
+
+```bash
+export DB_URL="jdbc:postgresql://localhost:5432/communitydb"
+export DB_USER="postgres"
+export DB_PASSWORD="changeme"
+export JWT_SECRET="bXlTdXBlclNlY3JldEtleVRoYXRJc0F0TGVhc3Q2NENoYXJzTG9uZw=="
+
+./mvnw spring-boot:run
+```
+
+<Tip>
+  `spring.jpa.hibernate.ddl-auto=update` is set in `application.properties`. Hibernate will automatically create all required tables and columns in the `communitydb` database on the first run. No manual schema setup or SQL migration scripts are needed.
+</Tip>
+
+## Database
+
+Spring Community uses **PostgreSQL 15** with a database named **`communitydb`**. All schema management is handled by Hibernate DDL auto-update — the entity model is the source of truth for the database schema.
+
+| Setting | Value |
+|---|---|
+| Database engine | PostgreSQL 15 Alpine (Docker) |
+| Database name | `communitydb` |
+| Default username | `postgres` |
+| Internal container port | `5432` |
+| Exposed host port (Docker Compose) | `5433` |
+| Schema management | Hibernate `ddl-auto=update` |
+| Data persistence | Named Docker volume `postgres_data` |
+
+<Warning>
+  The `Dockerfile` at the repository root currently has its multi-stage build steps commented out. It sets `eclipse-temurin:25-jdk` as a base image, but the `COPY`, `RUN mvnw package`, and runtime stage instructions are all commented out. As a result, `docker compose up` does **not** build a standalone JAR image — instead the `app` service mounts the project source directory and runs `./mvnw spring-boot:run` directly inside the container. This means the first startup will compile the entire project from source and download Maven dependencies, which takes several minutes on a cold cache. A production multi-stage Docker image (build → slim JRE runtime) is not yet wired up.
+</Warning>
+
+## Production Considerations
+
+Before deploying to a public-facing environment, review and update the following:
+
+**CORS allowed origins** — Both `AuthController` and `EventoController` carry `@CrossOrigin("http://localhost:4200")` annotations targeting the default Angular development server. Change these to your actual frontend domain. Alternatively, replace the per-controller annotations with a centralised CORS configuration in `WebSecurityConfig` and `WebSocketConfig`:
+
+```java
+// Example: replace localhost:4200 with your production frontend origin
+@CrossOrigin(origins = "https://community.yourdomain.com")
+```
+
+**JWT secret strength** — Generate a cryptographically random secret of at least 64 bytes and Base64-encode it. Never reuse development secrets in production.
+
+**Database password** — Replace the example `changeme` password with a strong, randomly generated password. Ensure the `.env` file (or your secrets manager) is never committed to source control.
+
+**Volume and storage** — Uploaded images are stored in the `storage.location` directory (default: `images/`). In production, mount this path to persistent external storage or an object storage bucket to avoid data loss on container restarts.

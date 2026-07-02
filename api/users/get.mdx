@@ -1,0 +1,75 @@
+---
+title: "GET /api/usuarios/{id} — Get User by ID"
+sidebarTitle: "Get User"
+description: "GET /api/usuarios/{id} — retrieves a single user by their numeric ID, returning nombre and email. Returns 404 if no user with that ID exists."
+---
+
+The Get User endpoint fetches a single registered user by their internal numeric identifier. This is useful when you already hold a user ID — for example, from an event membership record or a participant listing — and need to resolve the corresponding username and email. If the supplied ID does not match any record in the database, the server returns a `404 Not Found` response rather than an empty object.
+
+## Endpoint
+
+```
+GET /api/usuarios/{id}
+```
+
+**Access:** Public — no authentication token is required.
+
+---
+
+## Path parameters
+
+<ParamField path="id" type="integer" required>
+  The user's numeric database ID. This is the auto-generated primary key assigned when the account was created. Must be a positive integer.
+</ParamField>
+
+---
+
+## Response
+
+Returns a single `UsuarioSalidaDTO` object on success.
+
+<ResponseField name="nombre" type="string">
+  The user's chosen username. Between 6 and 20 characters.
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  The user's registered email address.
+</ResponseField>
+
+### Example response
+
+```json
+{
+  "nombre": "alice99",
+  "email": "alice@example.com"
+}
+```
+
+---
+
+## Error responses
+
+| HTTP status | Condition |
+|---|---|
+| `404 Not Found` | No user with the supplied `id` exists in the database. |
+
+### Example error response body
+
+```json
+{
+  "status": 404,
+  "mensaje": "Usuario no encontrado",
+  "timestamp": 1717000000000
+}
+```
+
+---
+
+## Example request
+
+```bash
+curl -X GET https://api.springcommunity.example/api/usuarios/42 \
+  -H "Accept: application/json"
+```
+
+---

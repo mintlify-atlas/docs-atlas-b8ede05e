@@ -1,0 +1,74 @@
+---
+title: "DELETE /api/eventos/delete/{id} — Delete an Event"
+sidebarTitle: "Delete Event"
+description: "DELETE /api/eventos/delete/{id} — permanently deletes a community event and its associated data. Requires a valid JWT access token."
+---
+
+Deleting an event is a permanent, irreversible operation. When this endpoint is called, the event record is removed from the database along with all of its associated participant memberships and administrator assignments. There is no soft-delete or recovery mechanism — once deleted, the event and its relationships cannot be restored.
+
+<Warning>
+  Deleting an event removes it permanently, including all associated participant memberships and administrator assignments. Any participant IDs that were enrolled in the event will lose their association. This action cannot be undone.
+</Warning>
+
+---
+
+## Endpoint
+
+```
+DELETE /api/eventos/delete/{id}
+```
+
+**Requires a valid JWT access token** sent in the `Authorization` header.
+
+---
+
+## Path Parameters
+
+<ParamField path="id" type="integer" required>
+  The unique numeric database ID of the event to delete. This value is available as the `id` field on any event listing or detail response.
+</ParamField>
+
+---
+
+## Response
+
+On success, the server returns **`200 OK`** with an empty response body. No `Content-Type` header or JSON payload is included.
+
+---
+
+## Error Responses
+
+| Status | Description |
+|--------|-------------|
+| `401 Unauthorized` | The `Authorization` header is missing, the token has expired, or the token signature is invalid. The response body will contain an `ErrorResponse` with `status`, `mensaje`, and `timestamp` fields. |
+| `404 Not Found` | No event exists with the supplied `id`. The event may have already been deleted or the ID may be incorrect. |
+
+### 401 Example
+
+```json
+{
+  "status": 401,
+  "mensaje": "Token inválido",
+  "timestamp": 1718467200000
+}
+```
+
+### 404 Example
+
+```json
+{
+  "status": 404,
+  "mensaje": "Evento no encontrado",
+  "timestamp": 1718467200000
+}
+```
+
+---
+
+## curl Example
+
+```bash
+curl --request DELETE \
+  --url http://localhost:8080/api/eventos/delete/7 \
+  --header 'Authorization: Bearer <your_access_token>'
+```

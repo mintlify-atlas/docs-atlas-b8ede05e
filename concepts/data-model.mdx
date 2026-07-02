@@ -1,0 +1,213 @@
+---
+title: "Spring Community Data Model and Entity Relationships"
+sidebarTitle: "Data Model"
+description: "Overview of Spring Community's core entities: Usuario, Participante, Evento, Mensaje, and Token — their fields, relationships, and how they map to the database."
+---
+
+Spring Community follows a Domain-Driven Design approach, organizing its persistence layer around five main JPA-managed entities: `Usuario`, `Participante`, `Evento`, `Mensaje`, and `Token`. Each entity maps to a PostgreSQL table, and relationships between them are expressed through standard JPA annotations — `@OneToOne`, `@ManyToMany`, and `@ManyToOne`. Controllers never expose raw entities to the outside world; instead, every HTTP response is shaped through a dedicated DTO layer mapped by MapStruct, keeping the domain model clean and the API surface intentional.
+
+## Entity Overview
+
+<CardGroup cols={2}>
+  <Card title="Usuario" icon="user">
+    The authentication identity of a community member, stored in the **`usuarios`** table. It implements Spring Security's `UserDetails` interface, so Spring Security can load and verify credentials directly from the database. Passwords must be at least 8 characters long and contain at least one digit.
+
+    | Field    | Type   | Constraints                          |
+    |----------|--------|--------------------------------------|
+    | `id`     | Long   | Primary key, auto-generated          |
+    | `nombre` | String | 6–20 chars, unique, not blank        |
+    | `password` | String | Min 8 chars, must contain a digit  |
+    | `email`  | String | Valid email format, unique, not blank|
+    | `rol`    | String | Default: `"USUARIO"`                 |
+  </Card>
+
+  <Card title="Participante" icon="users">
+    The social profile that is created alongside every `Usuario` account, stored in the **`participantes`** table. While `Usuario` owns credentials, `Participante` owns everything social: joined events, administered events, friends, and a profile picture.
+
+    | Field                  | Type   | Constraints                        |
+    |------------------------|--------|------------------------------------|
+    | `id`                   | Long   | Primary key, auto-generated        |
+    | `nombreParticipante`   | String | 6–20 chars, not blank              |
+    | `imagenParticipante`   | String | Filename; defaults to `default.png`|
+    | `eventos`              | Set    | M:M — events joined                |
+    | `eventosAdministrados` | Set    | M:M — events administered          |
+    | `amigos`               | Set    | M:M self-referential — friends     |
+  </Card>
+
+  <Card title="Evento" icon="calendar">
+    The central community resource, stored in the **`eventos`** table. An event has a name, optional type and date, privacy flags, a participant cap, and separate sets for regular participants and administrators. The event creator is always inserted into both sets automatically via `addCreadorComoAdmin()`.
+
+    | Field                  | Type      | Constraints                     |
+    |------------------------|-----------|---------------------------------|
+    | `id`                   | Long      | Primary key, auto-generated     |
+    | `nombreEvento`         | String    | Required, max 255 chars         |
+    | `tipoEvento`           | String    | Optional, max 255 chars         |
+    | `fechaEvento`          | LocalDate | Must not be in the past         |
+    | `informacion`          | String    | Free-text description           |
+    | `imagenEvento`         | String    | Filename, set server-side       |
+    | `privado`              | boolean   | Privacy flag                    |
+    | `oculto`               | boolean   | Visibility flag                 |
+    | `maxNumParticipantes`  | int       | 0–255                           |
+    | `participantesEvento`  | Set       | M:M via `evento_participantes`  |
+    | `administradores`      | Set       | M:M via `evento_administradores`|
+  </Card>
+
+  <Card title="Mensaje" icon="message">
+    A single chat message posted in an event's real-time chat room, stored in the **`mensajes`** table. Every message belongs to exactly one event and is authored by exactly one participant. Messages are persisted to PostgreSQL and retrievable via a REST endpoint after the fact.
+
+    | Field        | Type         | Constraints              |
+    |--------------|--------------|--------------------------|
+    | `id`         | Long         | Primary key, auto-generated |
+    | `texto`      | String       | Required, max 1000 chars |
+    | `evento`     | Evento       | M:1 — owning event       |
+    | `emisor`     | Participante | M:1 — message author     |
+  </Card>
+</CardGroup>
+
+<Card title="Token" icon="key">
+  A JWT token record used for revocation tracking, stored in the **`tokens`** table. Every issued access or refresh token is written to this table so the server can check whether a given token has been revoked or has expired independently of the JWT signature expiry time.
+
+  | Field       | Type      | Constraints                                 |
+  |-------------|-----------|---------------------------------------------|
+  | `id`        | Long      | Primary key, auto-generated                 |
+  | `token`     | String    | JWT string, unique, max 1000 chars          |
+  | `tokenType` | Enum      | Always `BEARER`                             |
+  | `tipoUso`   | TipoToken | `ACCESS` or `REFRESH`                       |
+  | `revoked`   | boolean   | Whether the token has been explicitly revoked |
+  | `expired`   | boolean   | Whether the token is marked as expired      |
+  | `usuario`   | Usuario   | M:1 — the owning user account               |
+</Card>
+
+## Relationship Diagram
+
+The following list describes every association in the data model and the join tables that back the many-to-many relationships:
+
+- **`Usuario` → `Participante`** — One-to-one. Each user account has exactly one social profile. The `participantes` table holds the foreign key (`usuario_id`).
+- **`Participante` ↔ `Evento`** (participant role) — Many-to-many. Join table: **`evento_participantes`** (`evento_id`, `participante_id`).
+- **`Participante` ↔ `Evento`** (admin role) — Many-to-many. Join table: **`evento_administradores`** (`evento_id`, `participante_id`).
+- **`Participante` ↔ `Participante`** (friends) — Many-to-many self-referential. Join table: **`participante_amigos`** (`participante_id`, `amigo_id`).
+- **`Mensaje` → `Participante`** — Many-to-one. Each message has one author (`emisor`); the `mensajes` table holds `participante_id`.
+- **`Mensaje` → `Evento`** — Many-to-one. Each message belongs to one event; the `mensajes` table holds `evento_id`.
+- **`Token` → `Usuario`** — Many-to-one. A user can have many tokens (one per login session); the `tokens` table holds `usuario_id`.
+
+```text
+Usuario ──────── Participante
+  1:1                │       │
+                  M:M │     M:M
+               Evento   Participante
+              (participant  (friends)
+               & admin)
+                  │
+                M:1
+               Mensaje
+
+Usuario ─── Token (M:1)
+```
+
+## Timestamps
+
+Every entity except `Token` extends the abstract `TimestampEntity` class, which adds two audit columns to each table:
+
+| Column       | Type          | Description                                      |
+|--------------|---------------|--------------------------------------------------|
+| `created_at` | LocalDateTime | Set once on `@PrePersist`; never updated again   |
+| `updated_at` | LocalDateTime | Updated on every `@PreUpdate`                    |
+
+`TimestampEntity` is annotated with `@MappedSuperclass` and `@EntityListeners(AuditingEntityListener.class)`, so Spring Data's JPA auditing infrastructure populates both fields automatically.
+
+```java
+@MappedSuperclass
+@EntityListeners(AuditingEntityListener.class)
+public abstract class TimestampEntity {
+
+    @CreatedDate
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @LastModifiedDate
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+}
+```
+
+## API DTOs
+
+Controllers never serialize entity objects directly. All responses pass through a dedicated DTO layer to avoid exposing internal associations, circular references, and sensitive fields. The following DTOs are in active use:
+
+<CardGroup cols={2}>
+  <Card title="EventoDTO" icon="calendar-days">
+    Full event detail, used as both the request body when creating or updating an event and as the response body for single-event lookups. The `participantesEvento` and `administradores` fields are **read-only in responses** — they are populated by the service layer and ignored on write.
+
+    ```json
+    {
+      "id": 1,
+      "nombreEvento": "Spring Meetup 2025",
+      "tipoEvento": "Meetup",
+      "fechaEvento": "2025-09-15",
+      "informacion": "Annual Spring Boot community gathering.",
+      "imagenEvento": "meetup.png",
+      "privado": false,
+      "oculto": false,
+      "maxNumParticipantes": 100,
+      "participantesEvento": [1, 2, 3],
+      "administradores": [1]
+    }
+    ```
+  </Card>
+
+  <Card title="EventoPrincipalDTO" icon="list">
+    A lightweight summary used in listing endpoints (e.g., the dashboard feed). It omits participant lists, descriptions, and privacy flags to keep responses small.
+
+    ```json
+    {
+      "id": 1,
+      "nombreEvento": "Spring Meetup 2025",
+      "tipoEvento": "Meetup",
+      "fechaEvento": "2025-09-15",
+      "imagenEvento": "meetup.png"
+    }
+    ```
+  </Card>
+
+  <Card title="ParticipanteDTO" icon="id-card">
+    The standard participant projection. Event memberships are expressed as lists of IDs rather than nested objects to keep responses flat and avoid N+1 serialisation overhead.
+
+    ```json
+    {
+      "id": 7,
+      "nombreParticipante": "alice99",
+      "eventosId": [1, 4],
+      "eventosAdministradosId": [1],
+      "usuarioId": 3,
+      "imagenParticipante": "alice.png"
+    }
+    ```
+  </Card>
+
+  <Card title="ParticipanteAmigoDTO" icon="user-group">
+    A trimmed friend profile returned when browsing a specific friend. Includes the friend's own friend list (as IDs) so a client can implement mutual-friend detection without additional requests.
+
+    ```json
+    {
+      "id": 12,
+      "nombreParticipante": "bob_dev",
+      "amigosId": [7, 15, 22],
+      "usuarioId": 9
+    }
+    ```
+  </Card>
+</CardGroup>
+
+<Card title="HistorialMensajesDTO" icon="clock-rotate-left">
+  The persisted chat message projection. Returned both from the REST history endpoint and broadcast over WebSocket after each new message is saved.
+
+  ```json
+  {
+    "id": 88,
+    "texto": "See you all at the meetup!",
+    "participanteId": 7,
+    "nombreParticipante": "alice99",
+    "fechaEnvio": "2025-08-20T18:45:00"
+  }
+  ```
+</Card>

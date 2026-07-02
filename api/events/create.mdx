@@ -1,0 +1,120 @@
+---
+title: "POST /api/eventos — Create a New Event"
+sidebarTitle: "Create Event"
+description: "POST /api/eventos — creates a new community event. Accepts multipart/form-data with an 'evento' JSON part and an optional 'image' file. Returns the created EventoDTO."
+---
+
+Creating an event requires a `multipart/form-data` request containing two parts: a JSON-encoded `EventoDTO` payload under the key `evento`, and an optional binary image file under the key `image`. The server validates the DTO fields, stores the image if provided, and persists the new event. Upon successful creation the endpoint returns the full `EventoDTO` of the newly created event, including its assigned `id`.
+
+<Note>
+  The authenticated participant is automatically added as both a participant and an administrator of the created event. You do not need to include the creator's ID in `participantesEvento` or `administradores` — those fields are ignored on creation and derived server-side.
+</Note>
+
+---
+
+## Endpoint
+
+```
+POST /api/eventos
+```
+
+**Requires a valid JWT access token** sent in the `Authorization` header.  
+**Content-Type:** `multipart/form-data`
+
+---
+
+## Request Parts
+
+<ParamField body="evento" type="string (JSON)" required>
+  A JSON-encoded `EventoDTO` object. Must be sent as the part named `evento`. The following fields are recognised:
+
+  - **`nombreEvento`** *(string, required)* — The display name of the event. Must not be blank. Maximum 255 characters.
+  - **`tipoEvento`** *(string, optional)* — A category or type label. Maximum 255 characters.
+  - **`fechaEvento`** *(string, optional)* — The scheduled date in `YYYY-MM-DD` format. If provided, the date must not be in the past.
+  - **`informacion`** *(string, optional)* — Free-text description or details about the event.
+  - **`privado`** *(boolean, optional, default `false`)* — Set to `true` to mark the event as private.
+  - **`oculto`** *(boolean, optional, default `false`)* — Set to `true` to hide the event from all general listings.
+  - **`maxNumParticipantes`** *(integer, optional, default `255`)* — Maximum number of participants. Must be between `0` and `255` inclusive.
+</ParamField>
+
+<ParamField body="image" type="file" required={false}>
+  An optional binary image file to use as the event's banner. Accepted formats: `JPEG`, `PNG`, `GIF`, `WebP`. Maximum file size: **5 MB**. If omitted, `imagenEvento` in the response will be `null`.
+</ParamField>
+
+---
+
+## Response
+
+Returns the full `EventoDTO` of the newly created event. See [Get Event](/api/events/get) for a description of every response field.
+
+### Response Example
+
+```json
+{
+  "id": 7,
+  "nombreEvento": "Autumn Hackathon 2025",
+  "tipoEvento": "hackathon",
+  "fechaEvento": "2025-11-15",
+  "informacion": "A 24-hour coding challenge open to all skill levels.",
+  "imagenEvento": "autumn-hackathon.png",
+  "privado": false,
+  "oculto": false,
+  "maxNumParticipantes": 100,
+  "participantesEvento": [5],
+  "administradores": [5]
+}
+```
+
+---
+
+## curl Example
+
+```bash
+curl --request POST \
+  --url http://localhost:8080/api/eventos \
+  --header 'Authorization: Bearer <your_access_token>' \
+  --form 'evento={
+    "nombreEvento": "Autumn Hackathon 2025",
+    "tipoEvento": "hackathon",
+    "fechaEvento": "2025-11-15",
+    "informacion": "A 24-hour coding challenge open to all skill levels.",
+    "privado": false,
+    "oculto": false,
+    "maxNumParticipantes": 100
+  };type=application/json' \
+  --form 'image=@/path/to/banner.png;type=image/png'
+```
+
+<Tip>
+  When sending the `evento` part with curl's `--form` flag, append `;type=application/json` to the value so the server correctly deserialises the JSON payload.
+</Tip>
+
+---
+
+## Error Responses
+
+| Status | Description |
+|--------|-------------|
+| `400 Bad Request` | A `@Valid` constraint on the DTO was violated — for example, `nombreEvento` is blank or `maxNumParticipantes` is outside the `0`–`255` range. The `mensaje` field in the response body will contain the first failing validation message. |
+| `401 Unauthorized` | The `Authorization` header is missing, the token has expired, or the token signature is invalid. |
+| `422 Unprocessable Entity` | A domain-level validation rule was violated — for example, `fechaEvento` is set to a past date. |
+
+### 400 Example
+
+```json
+{
+  "status": 400,
+  "mensaje": "El nombre del evento es obligatorio",
+  "timestamp": 1718467200000
+}
+```
+
+### 422 Example
+
+```json
+{
+  "status": 422,
+  "mensaje": "No puedes asignar una fecha pasada",
+  "timestamp": 1718467200000
+}
+```

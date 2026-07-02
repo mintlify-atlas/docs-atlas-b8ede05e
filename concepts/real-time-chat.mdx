@@ -1,0 +1,234 @@
+---
+title: "Real-Time Event Chat with WebSockets and STOMP"
+sidebarTitle: "Real-Time Chat"
+description: "Every event in Spring Community has a dedicated chat room powered by STOMP over WebSocket. Messages are persisted to PostgreSQL and retrievable via REST."
+---
+
+Every event in Spring Community comes with a built-in real-time chat room powered by STOMP over WebSocket. When participants join an event, they can subscribe to the event's dedicated topic channel and immediately receive messages from all other subscribers. Messages are not transient — every message is persisted to PostgreSQL the moment it is processed, so a participant who joins late can retrieve the full conversation history via a standard REST call without needing a WebSocket connection.
+
+## Architecture
+
+The chat system is composed of three layers: the WebSocket transport, the STOMP message broker, and the persistence layer. Here is the flow from connection to broadcast:
+
+<Steps>
+  <Step title="Connect to the WebSocket endpoint">
+    The client opens a WebSocket connection to the `/ws-chat` endpoint. This endpoint is registered by `WebSocketConfig` and does **not** use SockJS — a native WebSocket client is required.
+
+    Authentication happens during the STOMP `CONNECT` frame: the client must include an `Authorization` header with a `Bearer <access_token>` value. The `JwtChannelInterceptor` intercepts the `CONNECT` command, extracts the token from the header, validates it via `JwtProviderService`, and binds the resolved username as a `Principal` on the WebSocket session. If the token is missing or invalid, the connection proceeds without an authenticated principal and message processing will fail.
+
+    ```
+    CONNECT
+    Authorization: Bearer <access_token>
+    ```
+  </Step>
+
+  <Step title="Subscribe to an event's topic">
+    Once connected, the client subscribes to the event-specific destination:
+
+    ```
+    SUBSCRIBE
+    destination: /topic/evento/{eventoId}
+    ```
+
+    The simple in-memory broker configured under the `/topic` prefix handles fan-out delivery — every subscriber to `/topic/evento/{eventoId}` receives a copy of each message broadcast to that destination.
+  </Step>
+
+  <Step title="Send a message">
+    The client sends a message to the application destination:
+
+    ```
+    SEND
+    destination: /app/chat/{eventoId}
+    content-type: application/json
+
+    {"texto":"Hello everyone!","nombreParticipante":"alice99","participanteId":7,"eventoId":42}
+    ```
+
+    The `/app` prefix routes the frame to `WebsocketMessageController.getMensaje()`, which is annotated with `@MessageMapping("/chat/{eventoId}")`.
+  </Step>
+
+  <Step title="Controller persists and broadcasts">
+    `getMensaje()` extracts the authenticated username from the injected `Principal`, calls `mensajeService.guardarMensaje()` to persist the `Mensaje` entity to PostgreSQL, and returns a `HistorialMensajesDTO`. The `@SendTo("/topic/evento/{eventoId}")` annotation causes Spring to broadcast the returned DTO to all subscribers of that topic automatically.
+
+    ```java
+    @MessageMapping("/chat/{eventoId}")
+    @SendTo("/topic/evento/{eventoId}")
+    public HistorialMensajesDTO getMensaje(
+        @DestinationVariable Long eventoId,
+        @Valid MensajeDTO mensaje,
+        Principal principal
+    ) {
+        String username = principal.getName();
+        return mensajeService.guardarMensaje(eventoId, mensaje, username);
+    }
+    ```
+  </Step>
+</Steps>
+
+## Message Format
+
+### Sending: MensajeDTO
+
+When a client sends a message it must provide a `MensajeDTO` JSON payload. All fields should be present; `texto` is validated server-side and will be rejected if blank or too long.
+
+| Field                | Type   | Validation          | Description                                              |
+|----------------------|--------|---------------------|----------------------------------------------------------|
+| `texto`              | String | Required, max 1000 chars | The message content.                               |
+| `nombreParticipante` | String | —                   | The sender's display name. Used to populate the history record. |
+| `participanteId`     | Long   | —                   | The sender's participant ID.                             |
+| `eventoId`           | Long   | —                   | The ID of the event this message belongs to. Should match the `{eventoId}` in the destination path. |
+
+```json
+{
+  "texto": "Can't wait for the workshop!",
+  "nombreParticipante": "alice99",
+  "participanteId": 7,
+  "eventoId": 42
+}
+```
+
+<Warning>
+  Messages exceeding 1000 characters will fail `@Valid` validation in the controller and will not be persisted or broadcast. The WebSocket session remains open; the sender should handle validation error frames.
+</Warning>
+
+### Receiving: HistorialMensajesDTO
+
+All subscribers to `/topic/evento/{eventoId}` receive a `HistorialMensajesDTO` payload for every new message. This is the same structure returned by the REST history endpoint, ensuring consistency between live and historical data.
+
+| Field                | Type          | Description                                               |
+|----------------------|---------------|-----------------------------------------------------------|
+| `id`                 | Long          | The database-assigned ID of the persisted `Mensaje` record. |
+| `texto`              | String        | The message content.                                      |
+| `participanteId`     | Long          | The sender's participant ID.                              |
+| `nombreParticipante` | String        | The sender's display name at the time the message was sent. |
+| `fechaEnvio`         | LocalDateTime | Server-assigned timestamp from `TimestampEntity.createdAt`. |
+
+```json
+{
+  "id": 88,
+  "texto": "Can't wait for the workshop!",
+  "participanteId": 7,
+  "nombreParticipante": "alice99",
+  "fechaEnvio": "2025-08-20T18:45:00"
+}
+```
+
+## Message History
+
+To load the full chat history for an event — for example, when a participant first opens the chat view — use the dedicated REST endpoint. This is a standard HTTP request, not a WebSocket call.
+
+```bash
+GET /api/eventos/{eventoId}/mensajes
+Authorization: Bearer <access_token>
+```
+
+Returns a JSON array of `HistorialMensajesDTO` objects in ascending chronological order:
+
+```json
+[
+  {
+    "id": 85,
+    "texto": "Welcome to the event chat!",
+    "participanteId": 1,
+    "nombreParticipante": "organiser_dan",
+    "fechaEnvio": "2025-08-19T10:00:00"
+  },
+  {
+    "id": 88,
+    "texto": "Can't wait for the workshop!",
+    "participanteId": 7,
+    "nombreParticipante": "alice99",
+    "fechaEnvio": "2025-08-20T18:45:00"
+  }
+]
+```
+
+<Tip>
+  Load the message history via REST immediately after connecting and subscribing to the WebSocket topic. This prevents a race condition where messages sent between page load and subscription are missed.
+</Tip>
+
+## JavaScript Client Example
+
+The example below uses the `@stomp/stompjs` library to establish a connection, load history via REST, subscribe to the event topic, and send a message. It is a complete, runnable pattern suitable for integration into any modern JavaScript framework.
+
+```javascript
+import { Client } from "@stomp/stompjs";
+
+const ACCESS_TOKEN = "<your_access_token>";
+const EVENTO_ID = 42;
+const API_BASE = "http://localhost:8080";
+
+// 1. Load persisted message history via REST before connecting
+async function loadHistory() {
+  const response = await fetch(`${API_BASE}/api/eventos/${EVENTO_ID}/mensajes`, {
+    headers: { Authorization: `Bearer ${ACCESS_TOKEN}` },
+  });
+  const history = await response.json();
+  history.forEach((msg) => renderMessage(msg));
+}
+
+// 2. Set up the STOMP client
+const stompClient = new Client({
+  brokerURL: `ws://localhost:8080/ws-chat`,
+
+  // Pass the JWT in the CONNECT frame headers so JwtChannelInterceptor can validate it
+  connectHeaders: {
+    Authorization: `Bearer ${ACCESS_TOKEN}`,
+  },
+
+  onConnect: () => {
+    console.log("Connected to Spring Community chat");
+
+    // 3. Subscribe to the event-specific topic
+    stompClient.subscribe(`/topic/evento/${EVENTO_ID}`, (frame) => {
+      const message = JSON.parse(frame.body);
+      renderMessage(message);
+    });
+  },
+
+  onStompError: (frame) => {
+    console.error("STOMP error:", frame.headers["message"]);
+  },
+});
+
+// 4. Activate the connection
+loadHistory().then(() => stompClient.activate());
+
+// 5. Send a message
+function sendMessage(text, participanteId, nombreParticipante) {
+  if (!stompClient.connected) return;
+
+  const payload = {
+    texto: text,
+    nombreParticipante: nombreParticipante,
+    participanteId: participanteId,
+    eventoId: EVENTO_ID,
+  };
+
+  stompClient.publish({
+    destination: `/app/chat/${EVENTO_ID}`,
+    body: JSON.stringify(payload),
+  });
+}
+
+// Render helper (replace with your own UI logic)
+function renderMessage(msg) {
+  console.log(`[${msg.fechaEnvio}] ${msg.nombreParticipante}: ${msg.texto}`);
+}
+```
+
+## WebSocket Configuration Reference
+
+The STOMP broker is configured in `WebSocketConfig` with the following settings:
+
+| Setting                    | Value               | Description                                              |
+|----------------------------|---------------------|----------------------------------------------------------|
+| WebSocket endpoint         | `/ws-chat`          | The URL clients connect to; native WebSocket only (no SockJS). |
+| Application destination prefix | `/app`          | Messages sent to `/app/**` are routed to `@MessageMapping` controllers. |
+| Broker destination prefix  | `/topic`            | Messages broadcast to `/topic/**` are delivered to all subscribers by the simple broker. |
+| Allowed origins            | `http://localhost:4200` | CORS policy on the WebSocket endpoint.              |
+| Channel interceptor        | `JwtChannelInterceptor` | Validates the JWT on every `CONNECT` frame.         |
+
+<Note>
+  Authentication is required for WebSocket connections. The `Authorization` header must be present in the STOMP `CONNECT` frame and must carry a valid, non-expired, non-revoked token of type `ACCESS`. Tokens of type `REFRESH` are not accepted. If authentication fails silently (no principal is bound), calls to `principal.getName()` in the controller will throw a `NullPointerException` and the message will not be processed.
+</Note>

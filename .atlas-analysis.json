@@ -1,0 +1,130 @@
+{
+  "projectType": "api-service",
+  "projectName": "Spring Community",
+  "projectDescription": "A Spring Boot REST API backend for a community platform featuring event management, real-time WebSocket chat, participant social features, and JWT-based authentication.",
+  "theme": "luma",
+  "primaryColor": "#4A90D9",
+  "lightColor": "#EAF3FB",
+  "darkColor": "#1A3A5C",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "deployment"
+            ]
+          },
+          {
+            "group": "Authentication",
+            "pages": [
+              "auth/overview",
+              "auth/jwt-tokens",
+              "auth/websocket-auth"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/data-model",
+              "concepts/events",
+              "concepts/participants",
+              "concepts/real-time-chat"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/environment-variables",
+              "configuration/security",
+              "configuration/storage"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Auth",
+            "pages": [
+              "api/auth/register",
+              "api/auth/login",
+              "api/auth/refresh",
+              "api/auth/logout"
+            ]
+          },
+          {
+            "group": "Users",
+            "pages": [
+              "api/users/list",
+              "api/users/get",
+              "api/users/update",
+              "api/users/delete"
+            ]
+          },
+          {
+            "group": "Events",
+            "pages": [
+              "api/events/list",
+              "api/events/get",
+              "api/events/create",
+              "api/events/update",
+              "api/events/delete"
+            ]
+          },
+          {
+            "group": "Participants & Chat",
+            "pages": [
+              "api/participants/overview",
+              "api/messages/overview"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "JWT-based authentication with access and refresh token rotation",
+    "Event management with image uploads (multipart/form-data)",
+    "Participant social graph with friend relationships",
+    "Real-time WebSocket chat per event using STOMP over SockJS",
+    "Spring Security stateless filter chain with role-based access",
+    "PostgreSQL persistence via Spring Data JPA with automatic DDL",
+    "Domain-Driven Design entity methods for business logic",
+    "Global exception handler with structured error responses",
+    "Docker Compose setup for local development with PostgreSQL",
+    "Audit timestamps on all entities via TimestampEntity"
+  ],
+  "publicApiSurface": [
+    "POST /auth/crear — register a new user and return token pair",
+    "POST /auth/login — authenticate and return token pair",
+    "POST /auth/refresh — exchange refresh token for new access token",
+    "POST /auth/logout — revoke all tokens for authenticated user",
+    "GET /api/usuarios — list all users",
+    "GET /api/usuarios/{id} — get user by ID",
+    "PUT /api/usuarios/modificar — update authenticated user's name",
+    "DELETE /api/usuarios/delete — delete authenticated user account",
+    "GET /api/eventos — list all events (summary)",
+    "GET /api/eventos/mis-eventos — list events for authenticated participant",
+    "GET /api/eventos/{id} — get event detail by ID",
+    "POST /api/eventos — create event (multipart/form-data)",
+    "PUT /api/eventos/modificar/{id} — update event (multipart/form-data)",
+    "DELETE /api/eventos/delete/{id} — delete event by ID",
+    "GET /api/eventos/{eventoId}/mensajes — get chat history for event",
+    "GET /api/participantes/{id} — get participant by ID",
+    "GET /api/participantes — list all participants",
+    "GET /api/participantes/amigos/{id} — get friend profile by ID",
+    "GET /api/participantes/amigos — list authenticated user's friends",
+    "GET /api/participantes/amigos/mostrar?input= — search potential friends",
+    "POST /api/participantes/amigos/add/{id} — add friend",
+    "POST /api/participantes/imagen — update participant profile image",
+    "WS /ws-chat — STOMP WebSocket endpoint for real-time event chat",
+    "@MessageMapping /app/chat/{eventoId} — send chat message to event",
+    "@SendTo /topic/evento/{eventoId} — broadcast chat message to subscribers"
+  ]
+}

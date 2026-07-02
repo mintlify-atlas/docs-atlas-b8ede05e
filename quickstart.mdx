@@ -1,47 +1,179 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with Spring Community API"
+sidebarTitle: "Quickstart"
+description: "Register a user, authenticate, and make your first API calls to Spring Community in under 5 minutes using curl or any HTTP client."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+This guide walks you through cloning Spring Community, starting the server, registering a new account, authenticating, and making your first authenticated requests — all in under five minutes. By the end you will have a running local instance, a valid JWT access token, and a community event created through the API.
 
 ## Prerequisites
 
-Before you begin, you must have:
+Before you begin, make sure the following tools are available on your machine:
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+- **Java 25+** — required to run the Spring Boot application directly with the Maven Wrapper.
+- **Maven 3.9+** — used by the Maven Wrapper (`./mvnw`); no separate install is needed if you use the wrapper.
+- **PostgreSQL 15** (or **Docker**) — the application requires a PostgreSQL 15 database named `communitydb`. Use Docker Compose for the fastest setup.
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+
+  <Step title="Clone the repository and set environment variables">
+    Clone the project and move into the project directory:
 
     ```bash
-    npm install your-package
+    git clone https://github.com/CristianRR94/springCommunity.git
+    cd springCommunity
     ```
-  </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+
+    Spring Community requires two environment variables at minimum. Export them in your shell before starting the application:
 
     ```bash
-    your-cli init
+    # A base64-encoded HMAC secret — generate a strong random value in production
+    export JWT_SECRET="bXlTdXBlclNlY3JldEtleVRoYXRJc0F0TGVhc3Q2NENoYXJzTG9uZw=="
+
+    # Database password — must match POSTGRES_PASSWORD in docker-compose.yml
+    export DB_PASSWORD="changeme"
     ```
+
+    <Note>
+      `JWT_SECRET` must be a Base64-encoded string long enough for HMAC-SHA signing (recommended: at least 64 bytes before encoding). The value has no default and the application will fail to start without it.
+    </Note>
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+
+  <Step title="Start the application">
+    **Option A — Docker Compose (recommended)**
+
+    Docker Compose starts both the Spring Boot application and a PostgreSQL 15 database in one command. It also needs the two secrets from Step 1 and the datasource password passed as `SPRING_DATASOURCE_PASSWORD`:
 
     ```bash
-    your-cli start
+    export SPRING_DATASOURCE_PASSWORD="changeme"
+
+    docker compose up --build
+    ```
+
+    The `app` service mounts the project root into the container and runs `./mvnw spring-boot:run`, so the first startup will download dependencies — this takes a few minutes.
+
+    **Option B — Maven Wrapper (local PostgreSQL)**
+
+    If you already have PostgreSQL 15 running locally with a `communitydb` database, you can start the application directly:
+
+    ```bash
+    export JWT_SECRET="bXlTdXBlclNlY3JldEtleVRoYXRJc0F0TGVhc3Q2NENoYXJzTG9uZw=="
+    export DB_PASSWORD="changeme"
+
+    ./mvnw spring-boot:run
+    ```
+
+    Once you see `Started CommunityApplication` in the logs, the API is available at `http://localhost:8080`.
+
+    <Tip>
+      Hibernate is configured with `spring.jpa.hibernate.ddl-auto=update`, so all database tables are created automatically on the first boot. You do not need to run any SQL scripts manually.
+    </Tip>
+  </Step>
+
+  <Step title="Register a new account">
+    Account creation is handled by `POST /auth/crear`. The request body must be JSON with three fields.
+
+    **Validation constraints (enforced server-side):**
+    - `nombre` — required, 6–20 characters, must be unique.
+    - `password` — required, minimum 8 characters, must contain at least one number.
+    - `email` — required, must be a valid email address format, must be unique.
+
+    ```bash
+    curl -s -X POST http://localhost:8080/auth/crear \
+      -H "Content-Type: application/json" \
+      -d '{
+        "nombre": "alex123",
+        "password": "securePass1",
+        "email": "alex@example.com"
+      }'
+    ```
+
+    A successful registration immediately returns a `TokenResponse` — you are logged in as soon as your account is created:
+
+    ```json
+    {
+      "access_token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGV4MTIzIi...",
+      "refresh_token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGV4MTIzIi..."
+    }
+    ```
+
+    Save the `access_token` — you will use it as a Bearer token for all authenticated requests. The `refresh_token` can be exchanged for a new `access_token` at `POST /auth/refresh` once the access token expires (default expiry: 1 hour).
+  </Step>
+
+  <Step title="Authenticate an existing account">
+    After your first session expires, log in again using `POST /auth/login`. The login payload only requires `nombre` and `password`:
+
+    ```bash
+    curl -s -X POST http://localhost:8080/auth/login \
+      -H "Content-Type: application/json" \
+      -d '{
+        "nombre": "alex123",
+        "password": "securePass1"
+      }'
+    ```
+
+    The server responds with the same `TokenResponse` shape:
+
+    ```json
+    {
+      "access_token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGV4MTIzIi...",
+      "refresh_token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGV4MTIzIi..."
+    }
+    ```
+
+    Store the `access_token` in a shell variable for convenience in subsequent steps:
+
+    ```bash
+    TOKEN="eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGV4MTIzIi..."
     ```
   </Step>
+
+  <Step title="Make an authenticated request">
+    With a valid Bearer token you can call any protected endpoint. List all community events to confirm authentication is working:
+
+    ```bash
+    curl -s http://localhost:8080/api/eventos \
+      -H "Authorization: Bearer $TOKEN"
+    ```
+
+    The response is a JSON array of `EventoPrincipalDTO` objects. On a fresh database it will be an empty array:
+
+    ```json
+    []
+    ```
+  </Step>
+
+  <Step title="Create your first event">
+    Events are created with a `POST /api/eventos` request using `multipart/form-data`. The event data is sent as a JSON part named `evento`; an optional cover image can be attached as a part named `image` (max 5 MB).
+
+    ```bash
+    curl -s -X POST http://localhost:8080/api/eventos \
+      -H "Authorization: Bearer $TOKEN" \
+      -F 'evento={
+            "titulo": "Spring Community Meetup",
+            "descripcion": "Monthly gathering for Spring Boot enthusiasts.",
+            "fecha": "2025-09-15T18:00:00",
+            "ubicacion": "Madrid, Spain"
+          };type=application/json' \
+      -F "image=@/path/to/cover.jpg"
+    ```
+
+    The server returns the full `EventoDTO` for the newly created event, including its generated `id`:
+
+    ```json
+    {
+      "id": 1,
+      "titulo": "Spring Community Meetup",
+      "descripcion": "Monthly gathering for Spring Boot enthusiasts.",
+      "fecha": "2025-09-15T18:00:00",
+      "ubicacion": "Madrid, Spain",
+      "imagenUrl": "/images/abc123.jpg"
+    }
+    ```
+
+    <Note>
+      CORS is currently configured to allow requests only from `http://localhost:4200` (the default Angular dev server). If you are calling the API from a different frontend origin — including a browser-based HTTP client — you will need to update the `@CrossOrigin` origin in `AuthController` and `EventoController`, or configure a global CORS policy in `WebSecurityConfig`.
+    </Note>
+  </Step>
+
 </Steps>
-
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
-
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>

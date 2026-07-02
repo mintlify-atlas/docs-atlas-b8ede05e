@@ -1,0 +1,117 @@
+---
+title: "Authenticate WebSocket Connections with JWT"
+sidebarTitle: "WebSocket Auth"
+description: "Spring Community validates JWT tokens on STOMP WebSocket connections using a channel interceptor. Learn how to connect with a valid access token."
+---
+
+Spring Community exposes a real-time chat system over WebSockets at the `/ws-chat` endpoint using the STOMP sub-protocol. Because WebSocket connections are long-lived and exist outside the normal HTTP request/response cycle, authentication cannot rely on `JwtAuthFilter`. Instead, the server registers `JwtChannelInterceptor` on the inbound channel, which intercepts every STOMP frame before it is processed. When a `CONNECT` frame arrives, the interceptor extracts the JWT from the frame's `Authorization` header, validates it, and binds the resolved username as the Spring Security `Principal` for the duration of the session.
+
+## WebSocket Endpoint
+
+The STOMP endpoint is registered in `WebSocketConfig` with a single allowed origin:
+
+| Property          | Value                   |
+| ----------------- | ----------------------- |
+| Endpoint URL      | `/ws-chat`              |
+| Protocol          | STOMP over raw WebSocket |
+| Allowed origin    | `http://localhost:4200` |
+| SockJS fallback   | Not enabled             |
+
+## STOMP Destinations
+
+`WebSocketConfig.configureMessageBroker()` sets up two destination namespaces:
+
+| Direction          | Prefix   | Full destination pattern            | Description                                  |
+| ------------------ | -------- | ----------------------------------- | -------------------------------------------- |
+| Client → Server    | `/app`   | `/app/chat/{eventoId}`              | Client sends a message to an event chat room |
+| Server → Client    | `/topic` | `/topic/evento/{eventoId}`          | Client subscribes to receive broadcast messages for an event |
+
+## Connecting with Authentication
+
+`JwtChannelInterceptor.preSend()` intercepts incoming STOMP frames. For `CONNECT` frames it reads the `Authorization` native header, strips the `"Bearer "` prefix, and calls `jwtProviderService.extractUsername(token)`. If a non-null username is returned, a `UsernamePasswordAuthenticationToken` is constructed and set as the session's user via `accessor.setUser()`. This principal is then available in message-handling controllers via the `Principal` parameter.
+
+The following JavaScript example uses the `@stomp/stompjs` library to connect and subscribe:
+
+```javascript
+const stompClient = new StompJs.Client({
+  brokerURL: 'ws://localhost:8080/ws-chat',
+  connectHeaders: {
+    Authorization: 'Bearer <accessToken>'
+  }
+});
+
+stompClient.onConnect = () => {
+  // Subscribe to event chat — replace 1 with the target event ID
+  stompClient.subscribe('/topic/evento/1', (message) => {
+    const msg = JSON.parse(message.body);
+    console.log(msg);
+  });
+};
+
+stompClient.onStompError = (frame) => {
+  console.error('STOMP error', frame);
+};
+
+stompClient.activate();
+```
+
+<Note>
+  Only authenticated participants holding a valid (non-expired, non-revoked) ACCESS token can connect to the WebSocket. Attempting to connect without a token, or with a REFRESH token, will result in no principal being attached to the session, and any subsequent `@MessageMapping` handler that reads `Principal` will fail.
+</Note>
+
+## Sending Messages
+
+Once connected, the client publishes chat messages to `/app/chat/{eventoId}`. The server routes these to `WebsocketMessageController.getMensaje()`, which is annotated with `@MessageMapping("/chat/{eventoId}")`.
+
+The message body must conform to `MensajeDTO`:
+
+| Field                | Type     | Constraints                      | Description                          |
+| -------------------- | -------- | -------------------------------- | ------------------------------------ |
+| `texto`              | `String` | Not blank, max 1000 characters   | The chat message content             |
+| `nombreParticipante` | `String` | —                                | Display name of the sender           |
+| `participanteId`     | `Long`   | —                                | Database ID of the `Participante`    |
+| `eventoId`           | `Long`   | —                                | Database ID of the target event      |
+
+Example publish call:
+
+```javascript
+stompClient.publish({
+  destination: '/app/chat/1',
+  body: JSON.stringify({
+    texto: 'Hello, everyone!',
+    nombreParticipante: 'alice',
+    participanteId: 7,
+    eventoId: 1
+  })
+});
+```
+
+The server also verifies through `MensajeServiceImpl` that the authenticated user is an enrolled participant of the target event before persisting the message. Sending from an unregistered account throws a `SecurityException` and the message is dropped.
+
+## Receiving Messages
+
+After the server saves the message, `WebsocketMessageController` returns a `HistorialMensajesDTO` object. The `@SendTo("/topic/evento/{eventoId}")` annotation causes Spring to broadcast it to every subscriber on that topic.
+
+The broadcast payload shape:
+
+| Field                | Type            | Description                                   |
+| -------------------- | --------------- | --------------------------------------------- |
+| `id`                 | `Long`          | Database primary key of the saved message     |
+| `texto`              | `String`        | Message content                               |
+| `participanteId`     | `Long`          | Database ID of the `Participante` who sent it |
+| `nombreParticipante` | `String`        | Display name of the sender                    |
+| `fechaEnvio`         | `LocalDateTime` | Server-side timestamp when the message was persisted |
+
+An example broadcast message received by the subscription callback:
+
+```json
+{
+  "id": 104,
+  "texto": "Hello, everyone!",
+  "participanteId": 7,
+  "nombreParticipante": "alice",
+  "fechaEnvio": "2024-11-15T10:45:22.731"
+}
+```
+
+You can also retrieve the full message history for an event at any time via the REST endpoint `GET /api/eventos/{eventoId}/mensajes`, which returns an array of `HistorialMensajesDTO` objects ordered by `createdAt` ascending.

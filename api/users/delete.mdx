@@ -1,0 +1,70 @@
+---
+title: "DELETE /api/usuarios/delete — Delete Your Account"
+sidebarTitle: "Delete User"
+description: "DELETE /api/usuarios/delete — permanently deletes the authenticated user's account and associated participant profile. Requires a valid JWT access token."
+---
+
+The Delete User endpoint permanently removes the authenticated user's account from Spring Community. This is a destructive, irreversible operation: the `Usuario` record, the linked `Participante` profile, all JWT tokens issued to the account, and any associated data (such as event memberships) are all deleted in a single cascaded database operation via `CuentaService.deleteUsuarioParticipante()`. The caller is identified exclusively from the JWT access token — no ID or body is needed in the request.
+
+## Endpoint
+
+```
+DELETE /api/usuarios/delete
+```
+
+**Access:** Requires a valid JWT **access token** in the `Authorization` header.
+
+---
+
+## Headers
+
+<ParamField header="Authorization" type="string" required>
+  A valid JWT access token obtained from the authentication endpoint. Must follow the `Bearer <accessToken>` scheme. The user ID is extracted server-side from the token via `AuthDataService.obtenerUsuarioAutenticado()`.
+
+  Example: `Bearer eyJhbGciOiJIUzI1NiJ9...`
+</ParamField>
+
+---
+
+## Request parameters
+
+This endpoint accepts no path parameters, query parameters, or request body. The account to be deleted is derived entirely from the authenticated principal encoded in the token.
+
+---
+
+## Response
+
+Returns `200 OK` with an empty response body on success.
+
+---
+
+## Error responses
+
+| HTTP status | Condition |
+|---|---|
+| `401 Unauthorized` | The `Authorization` header is missing, the token has expired, or the token signature is invalid. |
+
+### Example error response body
+
+```json
+{
+  "status": 401,
+  "mensaje": "Token inválido",
+  "timestamp": 1717000000000
+}
+```
+
+---
+
+## Example request
+
+```bash
+curl -X DELETE https://api.springcommunity.example/api/usuarios/delete \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..."
+```
+
+---
+
+<Warning>
+  This action is permanent. Calling this endpoint deletes the user account, their participant profile, all issued JWT tokens, and all associated data including event memberships. There is no recovery mechanism — once deleted, the account and its data cannot be restored.
+</Warning>

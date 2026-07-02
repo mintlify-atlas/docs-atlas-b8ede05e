@@ -1,0 +1,199 @@
+---
+title: "Messages API — Chat History and WebSocket Reference"
+sidebarTitle: "Messages"
+description: "Retrieve persisted event chat history via REST and send real-time messages over STOMP WebSocket. Covers GET /api/eventos/{id}/mensajes and the /ws-chat WebSocket endpoint."
+---
+
+Spring Community provides two complementary ways to interact with event chat messages. The **REST endpoint** (`GET /api/eventos/{eventoId}/mensajes`) lets you fetch the full persisted history of messages for a given event — useful on initial page load or when reconnecting after a network drop. The **WebSocket endpoint** (`/ws-chat`, STOMP protocol) delivers messages in real time as participants send them, keeping all connected clients in sync without polling. Both mechanisms use the same `HistorialMensajesDTO` shape for the message payload, so you can render history and live messages with a single component.
+
+---
+
+## REST — Get Chat History
+
+Fetches all persisted messages for a specific event in chronological order. This endpoint is the recommended way to populate a chat view on load before the WebSocket connection is established.
+
+### GET /api/eventos/\{eventoId\}/mensajes
+
+**Authentication:** Bearer ACCESS token required in the `Authorization` header.
+
+### Path parameters
+
+<ParamField path="eventoId" type="Long" required>
+  The numeric ID of the event whose chat history you want to retrieve.
+</ParamField>
+
+### Response fields
+
+The endpoint returns an array of `HistorialMensajesDTO` objects.
+
+<ResponseField name="id" type="Long" required>
+  Unique identifier of the persisted message record.
+</ResponseField>
+
+<ResponseField name="texto" type="string" required>
+  The text content of the message. Maximum 1 000 characters.
+</ResponseField>
+
+<ResponseField name="participanteId" type="Long" required>
+  ID of the participant who sent the message.
+</ResponseField>
+
+<ResponseField name="nombreParticipante" type="string" required>
+  Display name of the sender at the time the message was stored.
+</ResponseField>
+
+<ResponseField name="fechaEnvio" type="string" required>
+  ISO 8601 datetime string recording when the message was persisted, e.g.
+  `2025-06-01T14:30:00`. Derived from the `LocalDateTime` stored on the
+  `Mensaje` entity via `TimestampEntity`.
+</ResponseField>
+
+### Response example
+
+```json
+[
+  {
+    "id": 101,
+    "texto": "Has anyone confirmed the venue?",
+    "participanteId": 1,
+    "nombreParticipante": "alice92",
+    "fechaEnvio": "2025-06-01T14:22:10"
+  },
+  {
+    "id": 102,
+    "texto": "Yes, it's confirmed for Saturday!",
+    "participanteId": 2,
+    "nombreParticipante": "bobsmith",
+    "fechaEnvio": "2025-06-01T14:23:45"
+  }
+]
+```
+
+### Error responses
+
+| Status | Condition |
+|--------|-----------|
+| `401 Unauthorized` | Token is missing, expired (`ExpiredJwtException`), or has an invalid signature (`SignatureException` / `MalformedJwtException`). |
+| `404 Not Found` | No event exists with the given `eventoId` (`EventoNotFoundException`). |
+
+### curl
+
+```bash
+curl -X GET http://localhost:8080/api/eventos/1/mensajes \
+  -H "Authorization: Bearer <accessToken>"
+```
+
+---
+
+## WebSocket — Send and Receive Messages in Real Time
+
+The real-time chat layer is built on **STOMP over WebSocket**. Clients connect to the `/ws-chat` endpoint, subscribe to a per-event topic, and publish messages to an application destination. The server persists each incoming message via `MensajeService.guardarMensaje` and immediately broadcasts the stored `HistorialMensajesDTO` to all subscribers of that event's topic.
+
+**WebSocket endpoint:** `ws://localhost:8080/ws-chat` (STOMP)
+
+**Subscribe to receive messages:** `/topic/evento/{eventoId}`
+
+**Publish to send a message:** `/app/chat/{eventoId}`
+
+<Warning>
+  WebSocket connections require a valid, non-expired, non-revoked ACCESS token.
+  Pass the token in the STOMP CONNECT frame headers as
+  `Authorization: Bearer <accessToken>`. Expired or tampered tokens are rejected
+  by `JwtChannelInterceptor` and the connection will be immediately closed.
+</Warning>
+
+### Authentication
+
+Send the bearer token as a header in the STOMP CONNECT frame:
+
+```text
+Authorization: Bearer <accessToken>
+```
+
+This is handled automatically when you set `connectHeaders` in the STOMP.js client (see example below).
+
+### Sending a message — MensajeDTO fields
+
+Publish a JSON-serialised `MensajeDTO` to `/app/chat/{eventoId}`.
+
+<ParamField body="texto" type="string" required>
+  The text content of the message. Must not be blank. Maximum 1 000 characters.
+  Validated server-side with `@NotBlank` and `@Size(max=1000)`; a violation
+  returns a `400 Bad Request` error frame.
+</ParamField>
+
+<ParamField body="nombreParticipante" type="string">
+  Display name of the sending participant. Used for display purposes within the
+  broadcast payload.
+</ParamField>
+
+<ParamField body="participanteId" type="Long">
+  ID of the participant sending the message.
+</ParamField>
+
+<ParamField body="eventoId" type="Long">
+  ID of the event this message belongs to. Should match the `{eventoId}` in the
+  destination path.
+</ParamField>
+
+### Broadcast payload
+
+After the server persists the message it broadcasts a `HistorialMensajesDTO` to `/topic/evento/{eventoId}`. All clients subscribed to that topic receive it immediately. The shape is identical to the REST history response:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | Long | Auto-generated ID of the persisted message. |
+| `texto` | string | Message content. |
+| `participanteId` | Long | ID of the sender's participant record. |
+| `nombreParticipante` | string | Display name of the sender. |
+| `fechaEnvio` | string | ISO 8601 datetime when the message was saved. |
+
+### JavaScript example (STOMP.js)
+
+The following example uses the `@stomp/stompjs` library to connect, subscribe to event `1`, and publish a message.
+
+```javascript
+import { Client } from '@stomp/stompjs';
+
+const client = new Client({
+  brokerURL: 'ws://localhost:8080/ws-chat',
+  connectHeaders: {
+    Authorization: 'Bearer <accessToken>'
+  },
+  onConnect: () => {
+    // Subscribe to receive all messages for event ID 1
+    client.subscribe('/topic/evento/1', (frame) => {
+      const msg = JSON.parse(frame.body);
+      console.log(msg.nombreParticipante + ': ' + msg.texto);
+    });
+
+    // Publish a new message to event ID 1
+    client.publish({
+      destination: '/app/chat/1',
+      body: JSON.stringify({
+        texto: 'Hello, event!',
+        nombreParticipante: 'alice92',
+        participanteId: 42,
+        eventoId: 1
+      })
+    });
+  }
+});
+
+client.activate();
+```
+
+<Note>
+  Replace `<accessToken>` with the JWT string obtained from the authentication
+  flow. The `eventoId` in the `subscribe` path and the `destination` path must
+  match the event whose chat you want to join. Subscribing to
+  `/topic/evento/1` will not deliver messages published to `/app/chat/2`.
+</Note>
+
+### Error handling
+
+| Scenario | Behaviour |
+|----------|-----------|
+| Expired or invalid token at connect time | `JwtChannelInterceptor` rejects the CONNECT frame; the WebSocket connection is closed. |
+| `texto` blank or over 1 000 characters | Server returns a STOMP ERROR frame with a `400 Bad Request` message derived from the `@NotBlank` / `@Size` constraint annotations on `MensajeDTO`. |
+| Unknown `eventoId` | `EventoNotFoundException` is thrown server-side; the message is not persisted and not broadcast. |

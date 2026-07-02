@@ -1,0 +1,194 @@
+---
+title: "Managing Community Events in Spring Community"
+sidebarTitle: "Events"
+description: "Community events are the central resource in Spring Community. Learn about event fields, privacy settings, participant management, admin roles, and image uploads."
+---
+
+`Evento` is the gravitational centre of the Spring Community platform — it is the resource around which participants gather, administer, and communicate. Every feature in the system, from real-time chat to friend discovery, ultimately connects back to an event. This page covers the full lifecycle of an event: what data it holds, how privacy and visibility work, the distinction between participants and administrators, and exactly how to create, update, and delete events through the REST API.
+
+## Event Fields
+
+The table below documents every field available on an `Evento` entity and its corresponding `EventoDTO` representation. When creating or updating an event, you supply these fields in the `evento` part of a `multipart/form-data` request body as a JSON object.
+
+| Field                 | Type      | Validation                           | Description                                                              |
+|-----------------------|-----------|--------------------------------------|--------------------------------------------------------------------------|
+| `id`                  | Long      | Read-only                            | Auto-generated primary key; present in responses, ignored on write.      |
+| `nombreEvento`        | String    | Required, max 255 chars              | The display name of the event.                                           |
+| `tipoEvento`          | String    | Optional, max 255 chars              | A category or type label (e.g., "Meetup", "Workshop", "Hackathon").      |
+| `fechaEvento`         | LocalDate | Optional; must not be in the past   | The date the event takes place. Validated by `validarFecha()` — a past date throws `EventoValidatorException`. |
+| `informacion`         | String    | Optional                             | Free-text description, agenda, or notes for the event.                   |
+| `imagenEvento`        | String    | Read-only (set by server)            | The filename of the uploaded event image. Populated after a successful image upload; clients should not send this field. |
+| `privado`             | boolean   | Optional, default `false`            | When `true`, the event is private — only invited/added participants can see or join it. |
+| `oculto`              | boolean   | Optional, default `false`            | When `true`, the event is hidden from public listings.                   |
+| `maxNumParticipantes` | int       | 0–255, default `255`                 | The maximum number of participants allowed. `0` means no participants beyond the creator; `255` is effectively unlimited. |
+| `participantesEvento` | List\<Long\> | Read-only in responses            | IDs of all participants currently joined to the event.                   |
+| `administradores`     | List\<Long\> | Read-only in responses            | IDs of all participants who hold admin rights for this event.            |
+
+<Note>
+  `fechaEvento` is validated on both create and update. Submitting a date that falls before today will result in an error response from the `validarFecha()` domain method. Omitting the field entirely is allowed — the event will have no scheduled date.
+</Note>
+
+## Privacy and Visibility
+
+Spring Community provides two independent boolean flags to control how an event appears to other users:
+
+<CardGroup cols={2}>
+  <Card title="privado" icon="lock">
+    A **private** event is not open to the public. Non-participants cannot request to join by browsing, and the event will not appear in open discovery feeds. Participants can only be added explicitly by an administrator.
+  </Card>
+  <Card title="oculto" icon="eye-slash">
+    A **hidden** event does not appear in the public event listing (`GET /api/eventos`) at all. It is invisible to users who are not already participants. This is stronger than `privado` — useful for internal or invite-only gatherings.
+  </Card>
+</CardGroup>
+
+The two flags are independent and can be combined:
+
+| `privado` | `oculto` | Behaviour                                              |
+|-----------|----------|--------------------------------------------------------|
+| `false`   | `false`  | Public — listed and joinable by anyone.                |
+| `true`    | `false`  | Listed but restricted — visible in search, join requires admin approval. |
+| `false`   | `true`   | Hidden — does not appear in listings; existing participants can still access it. |
+| `true`    | `true`   | Fully private and hidden — only reachable if you already know the event ID. |
+
+## Roles: Participants and Administrators
+
+Every event has two distinct membership tiers managed through separate join tables.
+
+<CardGroup cols={2}>
+  <Card title="Participant" icon="user">
+    A **participant** is any community member who has joined the event. They can view event details, access the event chat, and interact with other participants. Participants are tracked in the `evento_participantes` join table.
+  </Card>
+  <Card title="Administrator" icon="shield">
+    An **administrator** is a participant who also has management rights over the event. Admins can update event details, manage the participant list, and promote other participants to admin. Administrators are tracked in the `evento_administradores` join table.
+  </Card>
+</CardGroup>
+
+Two key domain rules govern role assignment:
+
+- **Creator is auto-admin:** When an event is created, the authenticated participant is automatically added to both sets via `addCreadorComoAdmin()`. This means the creator is simultaneously a participant and an administrator from the moment the event is persisted.
+
+- **Only participants can become admins:** The `addAdministrador()` domain method first checks that the target participant is already in `participantesEvento`. If the participant has not joined the event, a `ParticipanteException` is thrown and the promotion is rejected.
+
+```java
+public void addAdministrador(Participante participante) {
+    if (!participantesEvento.contains(participante)) {
+        throw new ParticipanteException("Usuario no encontrado como participante");
+    }
+    administradores.add(participante);
+    participante.getEventosAdministrados().add(this);
+}
+```
+
+## Creating an Event
+
+Events are created with a `POST` to `/api/eventos`. The request must use `multipart/form-data` with two named parts:
+
+- **`evento`** (required) — a JSON-encoded `EventoDTO` body.
+- **`image`** (optional) — a binary image file. If omitted, the event will have no cover image.
+
+<Steps>
+  <Step title="Compose the event JSON">
+    Build the `EventoDTO` payload with at minimum `nombreEvento`. All other fields are optional.
+
+    ```json
+    {
+      "nombreEvento": "Spring Boot Workshop",
+      "tipoEvento": "Workshop",
+      "fechaEvento": "2025-11-10",
+      "informacion": "Hands-on workshop covering Spring Boot 4 features.",
+      "privado": false,
+      "oculto": false,
+      "maxNumParticipantes": 50
+    }
+    ```
+  </Step>
+
+  <Step title="Send the multipart request">
+    Attach the JSON as the `evento` part and optionally include an image file as the `image` part.
+
+    ```bash
+    curl -X POST http://localhost:8080/api/eventos \
+      -H "Authorization: Bearer <access_token>" \
+      -F 'evento={"nombreEvento":"Spring Boot Workshop","tipoEvento":"Workshop","fechaEvento":"2025-11-10","informacion":"Hands-on workshop covering Spring Boot 4 features.","privado":false,"oculto":false,"maxNumParticipantes":50};type=application/json' \
+      -F 'image=@/path/to/cover.jpg;type=image/jpeg'
+    ```
+  </Step>
+
+  <Step title="Receive the created EventoDTO">
+    A successful response returns the persisted `EventoDTO` with the server-assigned `id`, `imagenEvento` filename, and the creator pre-populated in both `participantesEvento` and `administradores`.
+
+    ```json
+    {
+      "id": 42,
+      "nombreEvento": "Spring Boot Workshop",
+      "tipoEvento": "Workshop",
+      "fechaEvento": "2025-11-10",
+      "informacion": "Hands-on workshop covering Spring Boot 4 features.",
+      "imagenEvento": "cover.jpg",
+      "privado": false,
+      "oculto": false,
+      "maxNumParticipantes": 50,
+      "participantesEvento": [7],
+      "administradores": [7]
+    }
+    ```
+  </Step>
+</Steps>
+
+## Updating an Event
+
+To update an existing event send a `PUT` to `/api/eventos/modificar/{id}` using the same `multipart/form-data` structure as creation. The service layer calls the domain method `actualizarEvento()`, which replaces the following fields atomically and re-runs `validarFecha()` to ensure the updated date is not in the past:
+
+- `nombreEvento`
+- `tipoEvento`
+- `fechaEvento`
+- `informacion`
+- `privado`
+- `oculto`
+- `maxNumParticipantes`
+
+<Warning>
+  The `actualizarEvento()` method does **not** update `imagenEvento` through the JSON body. To change the event image, include a new `image` file part in the same PUT request. If `image` is omitted, the existing image filename is preserved.
+</Warning>
+
+```bash
+curl -X PUT http://localhost:8080/api/eventos/modificar/42 \
+  -H "Authorization: Bearer <access_token>" \
+  -F 'evento={"nombreEvento":"Spring Boot Workshop (Updated)","tipoEvento":"Workshop","fechaEvento":"2025-11-12","informacion":"Updated agenda.","privado":false,"oculto":false,"maxNumParticipantes":60};type=application/json' \
+  -F 'image=@/path/to/new-cover.jpg;type=image/jpeg'
+```
+
+## Image Uploads
+
+Event images are stored on the server's filesystem under the `images/eventos/` directory. The following rules apply:
+
+- The `image` part is optional on both `POST` (create) and `PUT` (update).
+- Spring Boot's default multipart upload limit is **5 MB per request**. Attempting to upload a file larger than this will be rejected.
+- The server determines the stored filename and writes it back to `imagenEvento` in the response. Clients should not hard-code or assume filenames.
+- To serve the image to a browser, request it from the static resource path: `GET /images/eventos/{imagenEvento}`.
+
+<Tip>
+  Resize and compress event images before uploading. A 1200×630 px JPEG at 80% quality is typically under 200 KB and renders well in both card and banner layouts.
+</Tip>
+
+## Deleting an Event
+
+Send a `DELETE` to `/api/eventos/delete/{id}` to remove an event. This is a hard delete — the event record and its join-table entries are removed from the database.
+
+```bash
+curl -X DELETE http://localhost:8080/api/eventos/delete/42 \
+  -H "Authorization: Bearer <access_token>"
+```
+
+## Listing Events
+
+<CardGroup cols={2}>
+  <Card title="GET /api/eventos" icon="list">
+    Returns all events as a list of `EventoPrincipalDTO` — the lightweight summary projection containing only `id`, `nombreEvento`, `tipoEvento`, `fechaEvento`, and `imagenEvento`. Use this endpoint to build dashboard feeds and event browsers.
+  </Card>
+  <Card title="GET /api/eventos/mis-eventos" icon="calendar-check">
+    Returns only the events the authenticated user's participant has joined, also as a list of `EventoPrincipalDTO`. Requires a valid `Authorization` header.
+  </Card>
+</CardGroup>
+
+To retrieve full event detail including participant and admin lists, use `GET /api/eventos/{id}`, which returns a complete `EventoDTO`.

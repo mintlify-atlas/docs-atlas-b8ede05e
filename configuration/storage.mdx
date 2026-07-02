@@ -1,0 +1,199 @@
+---
+title: "Image Storage Configuration in Spring Community"
+sidebarTitle: "Storage"
+description: "Spring Community stores event banners and participant profile images on the local filesystem. Learn about the storage layout, path configuration, and how images are served."
+---
+
+Spring Community uses local filesystem storage for all uploaded images. Two categories of images are managed: event banners uploaded when creating or editing an event, and participant profile pictures uploaded by users. Each category lives in its own subdirectory under a single configurable root location, making it straightforward to back up, replace, or mount as a Docker volume.
+
+## Storage Layout
+
+At startup the application expects the storage root (default: `images`) to exist and be writable. Inside that root, two subdirectories hold the respective image types. Each subdirectory ships with a `default.png` that is used when no image has been uploaded yet.
+
+```
+images/
+├── eventos/             # Event banner images
+│   └── default.png      # Default event image (used when none is uploaded)
+└── usuarios/            # Participant profile images
+    └── default.png      # Default profile image (used when none is uploaded)
+```
+
+<Note>
+  The `default.png` files must exist before the application receives its first request for a missing image. Include them in your repository or container image so they are always present.
+</Note>
+
+## Configuration
+
+The storage root is bound through the `StorageProperties` class, which reads the `storage.location` property using Spring Boot's `@ConfigurationProperties` mechanism:
+
+```java
+// StorageProperties.java
+@ConfigurationProperties("storage")
+public class StorageProperties {
+    // Location to store the files
+    private String location = "images";
+
+    public String getLocation() { return location; }
+    public void setLocation(String location) { this.location = location; }
+}
+```
+
+`StorageConfig` enables this binding by declaring `@EnableConfigurationProperties(StorageProperties.class)`:
+
+```java
+// StorageConfig.java
+@Configuration
+@EnableConfigurationProperties(StorageProperties.class)
+public class StorageConfig {
+}
+```
+
+To change the storage root, set the `storage.location` property in `application.properties` or via an environment variable:
+
+```properties
+# application.properties
+storage.location=images
+```
+
+```bash
+# Override at runtime
+STORAGE_LOCATION=/var/community/images java -jar community.jar
+```
+
+The value is treated as a path relative to the application working directory when it is not absolute. If an absolute path is supplied, it is used as-is. This logic lives in `ImageHandlerConfig`:
+
+```java
+String location = properties.getLocation();
+Path path = Path.of(location);
+String finalLocation = path.isAbsolute()
+    ? path.toUri().toString()
+    : "file:" + System.getProperty("user.dir") + "/" + location + "/";
+```
+
+## Serving Images
+
+Uploaded images are served as static resources by Spring MVC's resource handler, configured in `ImageHandlerConfig`. Any file inside the storage root is accessible at the `/images/**` URL path, which is declared as a **public route** in the security filter chain — no authentication token is required to retrieve an image.
+
+```java
+// ImageHandlerConfig.java
+registro.addResourceHandler("/images/**")
+        .addResourceLocations(finalLocation);
+```
+
+<CardGroup cols={2}>
+  <Card title="Event banner" icon="image">
+    Stored at `images/eventos/<filename>` and served at  
+    `GET /images/eventos/<filename>`
+  </Card>
+  <Card title="Profile picture" icon="user">
+    Stored at `images/usuarios/<filename>` and served at  
+    `GET /images/usuarios/<filename>`
+  </Card>
+</CardGroup>
+
+## Upload Limits
+
+Spring's multipart support caps the size of individual files and entire requests. Both limits default to **5 MB** and are configured in `application.properties`:
+
+```properties
+spring.servlet.multipart.max-file-size=5MB
+spring.servlet.multipart.max-request-size=5MB
+```
+
+To raise the limit (for example, to allow larger event banners) update both values together:
+
+```properties
+spring.servlet.multipart.max-file-size=10MB
+spring.servlet.multipart.max-request-size=10MB
+```
+
+## Uploading Images
+
+Images are uploaded as parts of multipart HTTP requests. There are three endpoints that accept image uploads:
+
+<Steps>
+
+  <Step title="Create an event with a banner — POST /api/eventos">
+    Submit a `multipart/form-data` request with two parts: `evento` (JSON body) and an optional `image` part. If `image` is omitted the event is created without a custom banner.
+
+    ```bash
+    curl -X POST http://localhost:8080/api/eventos \
+      -H "Authorization: Bearer <token>" \
+      -F 'evento={"nombre":"Summer Meetup","descripcion":"Outdoor event"};type=application/json' \
+      -F "image=@/path/to/banner.png"
+    ```
+
+    Handled by `EventoController`:
+
+    ```java
+    @PostMapping(consumes = "multipart/form-data")
+    public EventoDTO createEvento(
+        @Valid @RequestPart("evento") EventoDTO eventoDTO,
+        @RequestPart(value = "image", required = false) MultipartFile imagen
+    ) { ... }
+    ```
+  </Step>
+
+  <Step title="Update an event banner — PUT /api/eventos/modificar/{id}">
+    Same multipart structure as creation. The `image` part is optional; if omitted the existing banner is preserved.
+
+    ```bash
+    curl -X PUT http://localhost:8080/api/eventos/modificar/42 \
+      -H "Authorization: Bearer <token>" \
+      -F 'evento={"nombre":"Summer Meetup v2","descripcion":"Updated"};type=application/json' \
+      -F "image=@/path/to/new-banner.png"
+    ```
+
+    Handled by `EventoController`:
+
+    ```java
+    @PutMapping(value = "/modificar/{id}", consumes = "multipart/form-data")
+    public EventoDTO updateEvento(
+        @Valid @RequestPart("evento") EventoDTO eventoDTO,
+        @RequestPart(value = "image", required = false) MultipartFile imagen,
+        @PathVariable Long id
+    ) { ... }
+    ```
+  </Step>
+
+  <Step title="Upload a participant profile picture — POST /api/participantes/imagen">
+    Submit a `multipart/form-data` request with a required `image` part. This endpoint is authenticated — a valid Bearer token must be present. The image is associated with the participant linked to the currently authenticated user.
+
+    ```bash
+    curl -X POST http://localhost:8080/api/participantes/imagen \
+      -H "Authorization: Bearer <token>" \
+      -F "image=@/path/to/avatar.png"
+    ```
+
+    Handled by `ParticipanteController`:
+
+    ```java
+    @PostMapping("imagen")
+    public void cambiarImagen(
+        @RequestPart(value = "image") MultipartFile imagen
+    ) { ... }
+    ```
+  </Step>
+
+</Steps>
+
+## Docker Volume
+
+In the Docker Compose setup the application container mounts the project root as `/app`, which means the `images/` directory inside the repository is the live storage root. Uploaded images are written to your host machine and survive container restarts and rebuilds.
+
+```yaml
+# docker-compose.yml (relevant excerpt)
+services:
+  app:
+    volumes:
+      - .:/app          # Mounts the project root (including images/) into the container
+      - ~/.m2:/root/.m2
+      - /app/target
+    working_dir: /app
+```
+
+Because `storage.location=images` is relative to the working directory (`/app`), images are written to `/app/images/` inside the container, which maps to `./images/` on the host.
+
+<Note>
+  The `storage.location` value in `StorageProperties` must point to an existing, writable directory before the application starts. On Docker this is guaranteed by the volume mount above. When running locally, create the `images/eventos/` and `images/usuarios/` directories (and their `default.png` placeholders) before starting the application for the first time.
+</Note>

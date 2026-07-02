@@ -1,0 +1,207 @@
+---
+title: "Participants and Social Features in Spring Community"
+sidebarTitle: "Participants"
+description: "A Participant is the social profile linked to each user account. Learn how participants join events, add friends, manage profile images, and relate to their user accounts."
+---
+
+A `Participante` is the social identity of every person on the platform. While a `Usuario` account is created to hold authentication credentials, the `Participante` record is what the rest of the application sees and interacts with — it carries the display name, profile picture, event memberships, administered events, and friend connections. One `Participante` is created automatically for every `Usuario` registration, and the two are bound together in a permanent one-to-one relationship.
+
+## The Participant Profile
+
+The `Participante` entity lives in the `participantes` table and exposes the following fields:
+
+| Field                  | Type             | Default        | Description                                                                 |
+|------------------------|------------------|----------------|-----------------------------------------------------------------------------|
+| `id`                   | Long             | Auto-generated | Primary key; used as a stable reference throughout the API.                 |
+| `nombreParticipante`   | String           | Copied from `Usuario.nombre` | Display name, 6–20 characters. Kept in sync with the linked user's `nombre` field. |
+| `imagenParticipante`   | String           | `"default.png"` | Filename of the profile picture stored under `images/usuarios/`. New accounts start with the platform default image. |
+| `eventos`              | Set\<Evento\>    | Empty set      | All events the participant has joined as a regular member.                  |
+| `eventosAdministrados` | Set\<Evento\>    | Empty set      | All events the participant manages as an administrator.                     |
+| `amigos`               | Set\<Participante\> | Empty set   | The participant's friends — a many-to-many self-referential relationship backed by the `participante_amigos` join table. |
+
+The API surfaces this data through `ParticipanteDTO`, a flat Java record that replaces nested entity sets with lists of IDs:
+
+```json
+{
+  "id": 7,
+  "nombreParticipante": "alice99",
+  "eventosId": [1, 4, 12],
+  "eventosAdministradosId": [1],
+  "usuarioId": 3,
+  "imagenParticipante": "alice99_avatar.png"
+}
+```
+
+## Participant vs User
+
+The separation between `Usuario` and `Participante` follows a deliberate design choice: authentication concerns belong to `Usuario`, and social concerns belong to `Participante`. This keeps the security layer independent of the social graph.
+
+<CardGroup cols={2}>
+  <Card title="Usuario" icon="key">
+    Holds **credentials and access control**:
+    - `nombre` — login username
+    - `password` — BCrypt-hashed password
+    - `email` — unique email address
+    - `rol` — Spring Security role (`USUARIO` by default)
+    - `tokens` — linked JWT token records
+
+    Implements `UserDetails` so Spring Security can authenticate directly against it.
+  </Card>
+  <Card title="Participante" icon="id-card">
+    Holds **social identity and community data**:
+    - `nombreParticipante` — display name (mirrors `Usuario.nombre`)
+    - `imagenParticipante` — profile image filename
+    - `eventos` — joined events
+    - `eventosAdministrados` — administered events
+    - `amigos` — friend connections
+  </Card>
+</CardGroup>
+
+When a client needs to look up account-level data, the API returns a `UsuarioSalidaDTO` containing `{ nombre, email }`. When a client needs social profile data — event history, friends, profile image — it queries `ParticipanteDTO`. Most social API calls identify the target by `participanteId`, not `usuarioId`.
+
+## Friend System
+
+Spring Community's friend system is built on a many-to-many self-referential association between `Participante` records, backed by the `participante_amigos` join table. Adding a friend is a one-directional operation (similar to a follow model), and duplicate entries are prevented at the domain level by `agregarAmigo()`.
+
+<Steps>
+  <Step title="Search for participants by name">
+    Use the search endpoint to find participants whose display name contains a given string. This is the typical first step before adding someone as a friend.
+
+    ```bash
+    GET /api/participantes/amigos/mostrar?input=alice
+    ```
+
+    Returns a set of `ParticipanteDTO` objects whose `nombreParticipante` contains the search term (case-insensitive partial match).
+
+    ```json
+    [
+      {
+        "id": 7,
+        "nombreParticipante": "alice99",
+        "eventosId": [1, 4],
+        "eventosAdministradosId": [1],
+        "usuarioId": 3,
+        "imagenParticipante": "alice99_avatar.png"
+      }
+    ]
+    ```
+  </Step>
+
+  <Step title="Add a friend">
+    Send a `POST` request with the target participant's ID in the path. The server resolves the authenticated user's participant and calls `agregarAmigo()`.
+
+    ```bash
+    POST /api/participantes/amigos/add/7
+    Authorization: Bearer <access_token>
+    ```
+
+    Returns `200 OK` with an empty body on success. The domain method enforces that a participant cannot add themselves and that the ID must be valid.
+  </Step>
+
+  <Step title="View your friends list">
+    Retrieve the full friends list of the currently authenticated participant:
+
+    ```bash
+    GET /api/participantes/amigos
+    Authorization: Bearer <access_token>
+    ```
+
+    Returns a set of `ParticipanteAmigoDTO` objects, each containing the friend's ID, display name, their own friend IDs, and their linked user ID:
+
+    ```json
+    [
+      {
+        "id": 7,
+        "nombreParticipante": "alice99",
+        "amigosId": [15, 22],
+        "usuarioId": 3
+      }
+    ]
+    ```
+  </Step>
+
+  <Step title="View a single friend's profile">
+    Fetch the `ParticipanteAmigoDTO` for a specific friend by their participant ID:
+
+    ```bash
+    GET /api/participantes/amigos/7
+    Authorization: Bearer <access_token>
+    ```
+
+    ```json
+    {
+      "id": 7,
+      "nombreParticipante": "alice99",
+      "amigosId": [15, 22],
+      "usuarioId": 3
+    }
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  A participant cannot add themselves as a friend. Attempting to do so will trigger an `IllegalArgumentException` from the `agregarAmigo()` domain method and result in an error response.
+</Warning>
+
+## Profile Images
+
+Every participant has a profile image stored as a filename in `imagenParticipante`. New accounts default to `"default.png"`. To upload a custom picture, send a `POST` to `/api/participantes/imagen` with the image attached as a `multipart/form-data` part named `image`.
+
+```bash
+curl -X POST http://localhost:8080/api/participantes/imagen \
+  -H "Authorization: Bearer <access_token>" \
+  -F 'image=@/path/to/avatar.png;type=image/png'
+```
+
+The server saves the file to the `images/usuarios/` directory and updates the `imagenParticipante` field on the authenticated user's `Participante` record. To serve the image to a browser, request it from:
+
+```text
+GET /images/usuarios/{imagenParticipante}
+```
+
+<Tip>
+  Profile images are stored on the server filesystem. Keep uploads under **5 MB** — this is the default Spring Boot multipart size limit. Square images (e.g., 400×400 px) work best for circular avatar displays.
+</Tip>
+
+## Listing Participants
+
+Two endpoints expose participant data to authenticated clients:
+
+<CardGroup cols={2}>
+  <Card title="GET /api/participantes" icon="users">
+    Returns all participants in the system as a list of `ParticipanteDTO`. Useful for admin views or building a member directory.
+
+    ```bash
+    curl http://localhost:8080/api/participantes \
+      -H "Authorization: Bearer <access_token>"
+    ```
+  </Card>
+  <Card title="GET /api/participantes/{id}" icon="user">
+    Returns a single `ParticipanteDTO` by participant ID. Use this to load a specific user's social profile, including their event memberships and admin roles.
+
+    ```bash
+    curl http://localhost:8080/api/participantes/7 \
+      -H "Authorization: Bearer <access_token>"
+    ```
+  </Card>
+</CardGroup>
+
+## Participant Lifecycle
+
+<Note>
+  A `Participante` is created automatically when a new user registers via `POST /auth/crear`. The service method `createUsuarioParticipante()` persists both the `Usuario` and its linked `Participante` in a single transaction. The `nombreParticipante` is initialised from `Usuario.nombre`, and `imagenParticipante` defaults to `"default.png"`. Clients do not need to create participant records manually.
+</Note>
+
+Registration example:
+
+```bash
+curl -X POST http://localhost:8080/auth/crear \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nombre": "alice99",
+    "password": "secure1password",
+    "email": "alice@example.com"
+  }'
+```
+
+A successful registration returns a `TokenResponse` containing an access token and a refresh token. The new participant is immediately accessible at `GET /api/participantes/{id}`.

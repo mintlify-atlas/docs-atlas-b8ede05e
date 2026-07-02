@@ -1,0 +1,120 @@
+---
+title: "Authentication in Spring Community"
+sidebarTitle: "Overview"
+description: "Spring Community uses stateless JWT authentication with access and refresh tokens. Learn how to register, log in, and pass tokens to protected endpoints."
+---
+
+Spring Community's authentication model is fully stateless — no server-side session is ever created. Every request is authenticated by a signed JSON Web Token (JWT) carried in the `Authorization` header. Two token types are in play at all times: a short-lived **ACCESS** token for regular API calls and a longer-lived **REFRESH** token used exclusively to obtain a new token pair. Both tokens are persisted in the database so they can be individually revoked before their natural expiry, giving the platform hard logout semantics that pure stateless JWTs cannot provide on their own.
+
+## Public vs Protected Endpoints
+
+Not every endpoint requires a token. The table below lists all routes and their access level as configured in `WebSecurityConfig`.
+
+| Endpoint pattern           | Access level  | Notes                                         |
+| -------------------------- | ------------- | --------------------------------------------- |
+| `/auth/**`                 | Public        | Register, login, refresh — no token needed    |
+| `/api/usuarios/**`         | Public        | User profile reads and creation               |
+| `/images/**`               | Public        | Static image assets                           |
+| `/ws-chat`                 | Public        | WebSocket handshake (token checked by STOMP interceptor) |
+| `/api/eventos/**`          | Authenticated | Event management — requires valid ACCESS token |
+| `/api/participantes/**`    | Authenticated | Participant management — requires valid ACCESS token |
+| Any other route            | Authenticated | Defaults to requiring authentication          |
+
+<Note>
+  Although the `/ws-chat` WebSocket handshake URL itself is marked public in Spring Security, the STOMP `CONNECT` frame is intercepted by `JwtChannelInterceptor`, which validates the ACCESS token before the connection is established. An invalid or missing token will result in no principal being set on the session.
+</Note>
+
+## Auth Flow
+
+The complete lifecycle from registration to logout follows these steps:
+
+<Steps>
+  <Step title="Register a new account">
+    Send a `POST` request to `/auth/crear` with a `UsuarioEntradaDTO` body. On success the server creates the user, issues both token types, and returns a `TokenResponse`.
+
+    ```bash
+    curl -X POST http://localhost:8080/auth/crear \
+      -H "Content-Type: application/json" \
+      -d '{"nombre": "alice", "email": "alice@example.com", "password": "s3cr3t"}'
+    ```
+  </Step>
+
+  <Step title="Log in to an existing account">
+    Send a `POST` request to `/auth/login` with a `LoginDTO` body. The server validates the credentials, revokes any existing tokens, and issues a fresh `TokenResponse`.
+
+    ```bash
+    curl -X POST http://localhost:8080/auth/login \
+      -H "Content-Type: application/json" \
+      -d '{"nombre": "alice", "password": "s3cr3t"}'
+    ```
+  </Step>
+
+  <Step title="Call protected endpoints">
+    Include the access token from `TokenResponse.access_token` in every request to a protected resource using the standard `Authorization: Bearer` scheme.
+
+    ```bash
+    curl http://localhost:8080/api/eventos \
+      -H "Authorization: Bearer <accessToken>"
+    ```
+  </Step>
+
+  <Step title="Refresh an expired access token">
+    When the access token expires (default 1 hour), send a `POST` to `/auth/refresh` with the refresh token in the `Authorization` header. A brand-new token pair is returned and the old tokens are revoked.
+
+    ```bash
+    curl -X POST http://localhost:8080/auth/refresh \
+      -H "Authorization: Bearer <refreshToken>"
+    ```
+  </Step>
+
+  <Step title="Log out">
+    Send a `POST` to `/auth/logout` with the current access token. The server looks up the owning user in the database and marks **all** of their tokens as expired and revoked. The Spring `SecurityContext` is cleared immediately.
+
+    ```bash
+    curl -X POST http://localhost:8080/auth/logout \
+      -H "Authorization: Bearer <accessToken>"
+    ```
+  </Step>
+</Steps>
+
+## TokenResponse Shape
+
+Both the registration and login endpoints return the same `TokenResponse` record. The JSON property names use snake_case as declared with `@JsonProperty` in the source.
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiJ9...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiJ9..."
+}
+```
+
+Store these values securely on the client. Use `access_token` for every API call and keep `refresh_token` only for the `/auth/refresh` endpoint.
+
+## Error Responses
+
+When authentication fails the API returns a standard error envelope:
+
+```json
+{
+  "status": 401,
+  "message": "JWT token is expired",
+  "timestamp": "2024-11-15T10:23:45.123Z"
+}
+```
+
+Common HTTP status codes you will encounter in the authentication flow:
+
+| HTTP Status | Meaning                                                                 |
+| ----------- | ----------------------------------------------------------------------- |
+| `400`       | Validation failure on the request body (missing fields, blank values)   |
+| `401`       | Token is missing, expired, revoked, or of the wrong type                |
+| `404`       | Referenced user was not found in the database                           |
+
+<CardGroup cols={2}>
+  <Card title="JWT Token Lifecycle" icon="key" href="/auth/jwt-tokens">
+    Signing algorithm, claims structure, expiry defaults, revocation mechanics, and curl examples for refresh and logout.
+  </Card>
+  <Card title="WebSocket Authentication" icon="plug" href="/auth/websocket-auth">
+    How to pass your ACCESS token in a STOMP CONNECT frame and interact with the real-time chat system.
+  </Card>
+</CardGroup>

@@ -1,0 +1,198 @@
+---
+title: "Configuring Security and CORS in Spring Community"
+sidebarTitle: "Security"
+description: "Spring Community uses Spring Security with a stateless JWT filter chain. Learn how to configure CORS origins, public routes, and session management for production."
+---
+
+Security in Spring Community is managed entirely by `WebSecurityConfig`, which wires together two main concerns: a stateless JWT filter chain that authenticates every protected request, and a CORS policy that controls which browser origins are permitted to call the API. Both must be correctly configured before deploying to a production environment.
+
+## Security Filter Chain
+
+The `securityFilterChain` bean in `WebSecurityConfig` defines the full request-handling pipeline. It is built with the following settings:
+
+<Steps>
+
+  <Step title="CSRF protection disabled">
+    CSRF protection is explicitly disabled because the API is stateless and token-based. Browser cookies carrying session state are never used, so CSRF attacks are not a concern.
+
+    ```java
+    .csrf(csrf -> csrf.disable())
+    ```
+  </Step>
+
+  <Step title="CORS enabled">
+    CORS is applied using the `CorsConfigurationSource` bean defined in the same class, ensuring that cross-origin preflight (`OPTIONS`) requests are handled before any authentication logic runs.
+
+    ```java
+    .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+    ```
+  </Step>
+
+  <Step title="Route authorization rules">
+    Routes are divided into two groups — public and authenticated:
+
+    | Path pattern | Access |
+    |---|---|
+    | `/auth/**` | Public (no token required) |
+    | `/api/usuarios/**` | Public (registration and user lookup) |
+    | `/images/**` | Public (static image serving) |
+    | `/ws-chat` | Public (WebSocket handshake endpoint) |
+    | `/api/eventos/**` | Authenticated |
+    | `/api/participantes/**` | Authenticated |
+    | Any other request | Authenticated |
+
+    ```java
+    .authorizeHttpRequests(req -> req
+        .requestMatchers("/auth/**").permitAll()
+        .requestMatchers("/api/usuarios/**", "/images/**").permitAll()
+        .requestMatchers("/ws-chat").permitAll()
+        .requestMatchers("/api/eventos/**", "/api/participantes/**").authenticated()
+        .anyRequest().authenticated()
+    )
+    ```
+  </Step>
+
+  <Step title="Stateless session management">
+    No HTTP session is ever created or used. Every request must carry a valid `Authorization: Bearer <token>` header.
+
+    ```java
+    .sessionManagement(session ->
+        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+    )
+    ```
+  </Step>
+
+  <Step title="JWT filter inserted">
+    `JwtAuthFilter` runs before Spring's built-in `UsernamePasswordAuthenticationFilter`. It extracts and validates the Bearer token on every request, then populates `SecurityContextHolder` if the token is valid.
+
+    ```java
+    .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
+    ```
+  </Step>
+
+</Steps>
+
+## CORS Configuration
+
+The `corsConfigurationSource()` bean controls which browser origins, HTTP methods, and headers are accepted. The current configuration is tuned for local development with an Angular front-end running on port 4200.
+
+```java
+@Bean
+CorsConfigurationSource corsConfigurationSource() {
+    CorsConfiguration config = new CorsConfiguration();
+    config.setAllowedOriginPatterns(List.of("http://localhost:4200"));
+    config.setAllowedMethods(List.of("GET", "POST", "DELETE", "PUT", "OPTIONS"));
+    config.setAllowedHeaders(List.of("Content-Type", "Authorization"));
+    config.setAllowCredentials(true);
+
+    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+    source.registerCorsConfiguration("/**", config);
+    return source;
+}
+```
+
+<CardGroup cols={2}>
+  <Card title="Allowed Origins" icon="globe">
+    `http://localhost:4200` — the Angular dev server. Must be updated for production.
+  </Card>
+  <Card title="Allowed Methods" icon="arrow-right-arrow-left">
+    `GET`, `POST`, `DELETE`, `PUT`, `OPTIONS` — all methods used by the REST API.
+  </Card>
+  <Card title="Allowed Headers" icon="tag">
+    `Content-Type` and `Authorization` — the only two headers the client sends.
+  </Card>
+  <Card title="Allow Credentials" icon="key">
+    `true` — required so the browser forwards the `Authorization` header in cross-origin requests.
+  </Card>
+</CardGroup>
+
+## Changing CORS for Production
+
+Before going to production, replace `http://localhost:4200` with your actual front-end domain in `WebSecurityConfig`. Using `setAllowedOriginPatterns` (rather than `setAllowedOrigins`) lets you use wildcards for subdomain support if needed.
+
+```java
+// WebSecurityConfig.java — production example
+config.setAllowedOriginPatterns(List.of("https://community.example.com"));
+```
+
+For multiple environments you can inject the allowed origins from an environment variable:
+
+```java
+@Value("${cors.allowed-origins:http://localhost:4200}")
+private List<String> allowedOrigins;
+
+@Bean
+CorsConfigurationSource corsConfigurationSource() {
+    CorsConfiguration config = new CorsConfiguration();
+    config.setAllowedOriginPatterns(allowedOrigins);
+    config.setAllowedMethods(List.of("GET", "POST", "DELETE", "PUT", "OPTIONS"));
+    config.setAllowedHeaders(List.of("Content-Type", "Authorization"));
+    config.setAllowCredentials(true);
+
+    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+    source.registerCorsConfiguration("/**", config);
+    return source;
+}
+```
+
+Then set the property in your deployment environment:
+
+```properties
+cors.allowed-origins=https://community.example.com
+```
+
+## Logout
+
+Logout is handled at `POST /auth/logout` by Spring Security's built-in logout mechanism, extended with a custom handler. When a logout request arrives:
+
+<Steps>
+  <Step title="Token revocation">
+    The custom `LogoutHandler` reads the `Authorization` header, extracts the Bearer token, and calls `tokenManagementService.revokeAllTokensByToken(token)`, which invalidates **all active tokens** belonging to that user — not just the one presented.
+
+    ```java
+    .addLogoutHandler((request, _, _) -> {
+        final var authHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            final String token = authHeader.substring(7);
+            tokenManagementService.revokeAllTokensByToken(token);
+        }
+    })
+    ```
+  </Step>
+  <Step title="Context cleared">
+    On successful logout the `LogoutSuccessHandler` calls `SecurityContextHolder.clearContext()`, removing all authentication data from the current thread.
+
+    ```java
+    .logoutSuccessHandler((_, _, _) -> SecurityContextHolder.clearContext())
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  Because all tokens are revoked at once, a single logout call signs the user out of every active session or device — useful for a "log out everywhere" feature.
+</Tip>
+
+## Role System
+
+Spring Community uses a single-role model. Every `Usuario` entity has a `rol` field that defaults to `"USUARIO"` at registration. The `getAuthorities()` method on `Usuario` prepends the Spring Security `ROLE_` prefix at runtime:
+
+```java
+// Usuario.java
+@Builder.Default
+private String rol = "USUARIO";
+
+@Override
+public Collection<? extends GrantedAuthority> getAuthorities() {
+    return List.of(new SimpleGrantedAuthority("ROLE_" + rol.toUpperCase()));
+}
+```
+
+This means every authenticated user carries the authority `ROLE_USUARIO`. The authority is included in the JWT claims and re-read by `JwtAuthFilter` on each request to reconstruct the `Authentication` object without a database round-trip.
+
+<Note>
+  Only `ROLE_USUARIO` exists in the current implementation. Route-level `hasRole()` checks are not used; all protected routes simply require any authenticated user. Extending the role system would require adding new role values to the `rol` column and adding `hasRole()` matchers to the filter chain.
+</Note>
+
+<Warning>
+  Update the allowed origins in **both** `WebSecurityConfig` (HTTP CORS) and `WebSocketConfig` (WebSocket handshake) before deploying to production. The WebSocket endpoint `/ws-chat` independently sets `setAllowedOrigins("http://localhost:4200")` in `WebSocketConfig` and must be changed to match your production domain.
+</Warning>

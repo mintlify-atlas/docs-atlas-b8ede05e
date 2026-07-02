@@ -1,0 +1,84 @@
+---
+title: "POST /auth/refresh — Refresh an Access Token"
+sidebarTitle: "Refresh Token"
+description: "POST /auth/refresh — exchanges a valid refresh token for a new access token and refresh token pair. Pass the refresh token in the Authorization header."
+---
+
+When a client's access token has expired, it can call this endpoint to obtain a new token pair without requiring the user to log in again. The server validates the provided refresh token — checking its signature, expiry, type, and revocation status — then revokes all existing tokens for that user and issues a fresh access token and refresh token. This rotation strategy ensures that a stolen refresh token can only be used once.
+
+## Endpoint
+
+```
+POST /auth/refresh
+```
+
+**Auth required:** A valid **REFRESH-type** token in the `Authorization` header. Do not pass an access token here.
+
+---
+
+## Request Headers
+
+<ParamField header="Authorization" type="string" required>
+  Must be in the format `Bearer <refreshToken>` where `<refreshToken>` is the `refresh_token` value received from a previous `/auth/login` or `/auth/refresh` response. Passing an access token instead of a refresh token will result in a `401` error.
+</ParamField>
+
+---
+
+## Response
+
+A `200 OK` response with a JSON body containing a brand-new token pair.
+
+<ResponseField name="access_token" type="string">
+  A newly issued JWT access token. Replace the expired token in your client with this value. Default TTL: **1 hour** (configurable via `JWT_EXPIRATION`).
+</ResponseField>
+
+<ResponseField name="refresh_token" type="string">
+  A newly issued JWT refresh token. The old refresh token is revoked as part of this call — store this new value for future refresh requests. Default TTL: **7 days** (configurable via `JWT_REFRESH_EXPIRATION`).
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjEsIm5vbWJyZSI6ImNyaXN0aWFuOTQiLCJ0aXBvVXNvIjoiQUNDRVNTIiwicm9sZXMiOlsiUk9MRV9VU0VSIl0sImp0aSI6ImNjY2MtOTk5OSIsInN1YiI6ImNyaXN0aWFuOTQiLCJpYXQiOjE3MDAwMDM2MDAsImV4cCI6MTcwMDAwNzIwMH0.signature",
+  "refresh_token": "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VySWQiOjEsIm5vbWJyZSI6ImNyaXN0aWFuOTQiLCJ0aXBvVXNvIjoiUkVGUkVTSCIsInJvbGVzIjpbIlJPTEVfVVNFUiJdLCJqdGkiOiJkZGRkLTg4ODgiLCJzdWIiOiJjcmlzdGlhbjk0IiwiaWF0IjoxNzAwMDAzNjAwLCJleHAiOjE3MDA2MDg0MDB9.signature"
+}
+```
+
+---
+
+## Error Responses
+
+| Status | Condition |
+|--------|-----------|
+| `401 Unauthorized` | The token is expired, has been revoked (e.g., by a previous logout or login), or is not of type `REFRESH`. The response body will contain `"La sesión ha expirado"` for expiry errors. |
+| `401 Unauthorized` | The token has an invalid signature or is malformed. The response body will contain `"Token inválido"`. |
+
+### Error Response Body
+
+```json
+{
+  "status": 401,
+  "mensaje": "La sesión ha expirado",
+  "timestamp": 1700000000000
+}
+```
+
+---
+
+## curl Example
+
+```bash
+curl -X POST http://localhost:8080/auth/refresh \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...your_refresh_token_here"
+```
+
+---
+
+<Note>
+  Only tokens with an internal type claim of `REFRESH` are accepted by this endpoint. If you pass an **access token** in the `Authorization` header, the server will reject the request with `401 Unauthorized` because the token type check will fail. Always store and use the `refresh_token` field from the login/register response for this call.
+</Note>
+
+<Warning>
+  Refresh token rotation is enforced: each call to `/auth/refresh` revokes **all** existing tokens for the user and issues a completely new pair. You must persist the new `refresh_token` returned in the response — the old one is immediately invalidated and cannot be reused.
+</Warning>
