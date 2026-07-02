@@ -1,7 +1,7 @@
 ---
 title: "Configuring Security and CORS in Spring Community"
 sidebarTitle: "Security"
-description: "Spring Community uses Spring Security with a stateless JWT filter chain. Learn how to configure CORS origins, public routes, and session management for production."
+description: "Spring Community security: JWT filter chain, public vs. protected routes, CORS policy, stateless sessions, and logout token revocation for production use."
 ---
 
 Security in Spring Community is managed entirely by `WebSecurityConfig`, which wires together two main concerns: a stateless JWT filter chain that authenticates every protected request, and a CORS policy that controls which browser origins are permitted to call the API. Both must be correctly configured before deploying to a production environment.
@@ -187,7 +187,7 @@ public Collection<? extends GrantedAuthority> getAuthorities() {
 }
 ```
 
-This means every authenticated user carries the authority `ROLE_USUARIO`. The authority is included in the JWT claims and re-read by `JwtAuthFilter` on each request to reconstruct the `Authentication` object without a database round-trip.
+This means every authenticated user carries the authority `ROLE_USUARIO`. The roles are embedded in the JWT claims at token-generation time, but on each authenticated request `JwtAuthFilter` still performs two database lookups: one against `TokenRepository` to verify the token has not been revoked, and one against `UsuarioRepository` (via `UserDetailsService`) to load the current `UserDetails` and its authorities.
 
 <Note>
   Only `ROLE_USUARIO` exists in the current implementation. Route-level `hasRole()` checks are not used; all protected routes simply require any authenticated user. Extending the role system would require adding new role values to the `rol` column and adding `hasRole()` matchers to the filter chain.

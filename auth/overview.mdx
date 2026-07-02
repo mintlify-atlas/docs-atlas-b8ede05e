@@ -1,7 +1,7 @@
 ---
-title: "Authentication in Spring Community"
+title: "Spring Community Authentication: JWT Access and Refresh"
 sidebarTitle: "Overview"
-description: "Spring Community uses stateless JWT authentication with access and refresh tokens. Learn how to register, log in, and pass tokens to protected endpoints."
+description: "Spring Community uses stateless JWT auth with access and refresh tokens. Learn how to register, log in, and call protected endpoints."
 ---
 
 Spring Community's authentication model is fully stateless — no server-side session is ever created. Every request is authenticated by a signed JSON Web Token (JWT) carried in the `Authorization` header. Two token types are in play at all times: a short-lived **ACCESS** token for regular API calls and a longer-lived **REFRESH** token used exclusively to obtain a new token pair. Both tokens are persisted in the database so they can be individually revoked before their natural expiry, giving the platform hard logout semantics that pure stateless JWTs cannot provide on their own.
@@ -21,7 +21,7 @@ Not every endpoint requires a token. The table below lists all routes and their 
 | Any other route            | Authenticated | Defaults to requiring authentication          |
 
 <Note>
-  Although the `/ws-chat` WebSocket handshake URL itself is marked public in Spring Security, the STOMP `CONNECT` frame is intercepted by `JwtChannelInterceptor`, which validates the ACCESS token before the connection is established. An invalid or missing token will result in no principal being set on the session.
+  Although the `/ws-chat` WebSocket handshake URL itself is marked public in Spring Security, the STOMP `CONNECT` frame is intercepted by `JwtChannelInterceptor`, which reads the `Authorization` native header and extracts the username from the token. If a valid username is resolved, a principal is bound to the session; otherwise the connection proceeds with no authenticated principal.
 </Note>
 
 ## Auth Flow

@@ -1,7 +1,7 @@
 ---
-title: "GET /api/usuarios/{id} — Get User by ID"
+title: "Get User by ID — GET /api/usuarios/{id} Endpoint"
 sidebarTitle: "Get User"
-description: "GET /api/usuarios/{id} — retrieves a single user by their numeric ID, returning nombre and email. Returns 404 if no user with that ID exists."
+description: "Fetch a single Spring Community user by their numeric database ID. Returns a UsuarioSalidaDTO with nombre and email, or 404 if the ID does not exist."
 ---
 
 The Get User endpoint fetches a single registered user by their internal numeric identifier. This is useful when you already hold a user ID — for example, from an event membership record or a participant listing — and need to resolve the corresponding username and email. If the supplied ID does not match any record in the database, the server returns a `404 Not Found` response rather than an empty object.

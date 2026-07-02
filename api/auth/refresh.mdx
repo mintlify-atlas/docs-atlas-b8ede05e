@@ -1,7 +1,7 @@
 ---
-title: "POST /auth/refresh — Refresh an Access Token"
+title: "POST /auth/refresh — Exchange Refresh Token for New Pair"
 sidebarTitle: "Refresh Token"
-description: "POST /auth/refresh — exchanges a valid refresh token for a new access token and refresh token pair. Pass the refresh token in the Authorization header."
+description: "Exchanges a valid REFRESH-type JWT for a brand-new access token and refresh token pair, revoking the old tokens to enforce single-use token rotation."
 ---
 
 When a client's access token has expired, it can call this endpoint to obtain a new token pair without requiring the user to log in again. The server validates the provided refresh token — checking its signature, expiry, type, and revocation status — then revokes all existing tokens for that user and issues a fresh access token and refresh token. This rotation strategy ensures that a stolen refresh token can only be used once.
@@ -19,7 +19,7 @@ POST /auth/refresh
 ## Request Headers
 
 <ParamField header="Authorization" type="string" required>
-  Must be in the format `Bearer <refreshToken>` where `<refreshToken>` is the `refresh_token` value received from a previous `/auth/login` or `/auth/refresh` response. Passing an access token instead of a refresh token will result in a `401` error.
+  Must be in the format `Bearer <refreshToken>` where `<refreshToken>` is the `refresh_token` value received from a previous `/auth/login` or `/auth/refresh` response. Passing an access token instead of a refresh token will result in a `500` error.
 </ParamField>
 
 ---
@@ -51,8 +51,10 @@ A `200 OK` response with a JSON body containing a brand-new token pair.
 
 | Status | Condition |
 |--------|-----------|
-| `401 Unauthorized` | The token is expired, has been revoked (e.g., by a previous logout or login), or is not of type `REFRESH`. The response body will contain `"La sesión ha expirado"` for expiry errors. |
-| `401 Unauthorized` | The token has an invalid signature or is malformed. The response body will contain `"Token inválido"`. |
+| `401 Unauthorized` | The token's signature is invalid or the JWT is structurally malformed. The response body will contain `"Token inválido"`. |
+| `401 Unauthorized` | The token has expired (`ExpiredJwtException`). The response body will contain `"La sesión ha expirado"`. |
+| `404 Not Found` | The username embedded in the refresh token does not match any user in the database. |
+| `500 Internal Server Error` | The `Authorization` header is missing or does not start with `Bearer `, the token is not of type `REFRESH`, or the token has been revoked or marked expired in the database. These conditions throw `IllegalArgumentException`, which is not mapped by the global exception handler. |
 
 ### Error Response Body
 
@@ -76,7 +78,7 @@ curl -X POST http://localhost:8080/auth/refresh \
 ---
 
 <Note>
-  Only tokens with an internal type claim of `REFRESH` are accepted by this endpoint. If you pass an **access token** in the `Authorization` header, the server will reject the request with `401 Unauthorized` because the token type check will fail. Always store and use the `refresh_token` field from the login/register response for this call.
+  Only tokens with an internal type claim of `REFRESH` are accepted by this endpoint. If you pass an **access token** in the `Authorization` header, the server will reject the request with `500 Internal Server Error` because the token type check throws an unhandled `IllegalArgumentException`. Always store and use the `refresh_token` field from the login/register response for this call.
 </Note>
 
 <Warning>

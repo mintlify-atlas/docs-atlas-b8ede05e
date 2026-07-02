@@ -1,7 +1,7 @@
 ---
 title: "Messages API — Chat History and WebSocket Reference"
 sidebarTitle: "Messages"
-description: "Retrieve persisted event chat history via REST and send real-time messages over STOMP WebSocket. Covers GET /api/eventos/{id}/mensajes and the /ws-chat WebSocket endpoint."
+description: "Fetch event chat history via REST and send messages in real time over STOMP WebSocket. Covers GET /api/eventos/{eventoId}/mensajes and /ws-chat."
 ---
 
 Spring Community provides two complementary ways to interact with event chat messages. The **REST endpoint** (`GET /api/eventos/{eventoId}/mensajes`) lets you fetch the full persisted history of messages for a given event — useful on initial page load or when reconnecting after a network drop. The **WebSocket endpoint** (`/ws-chat`, STOMP protocol) delivers messages in real time as participants send them, keeping all connected clients in sync without polling. Both mechanisms use the same `HistorialMensajesDTO` shape for the message payload, so you can render history and live messages with a single component.

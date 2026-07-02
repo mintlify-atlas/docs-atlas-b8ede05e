@@ -1,12 +1,12 @@
 ---
-title: "PUT /api/usuarios/modificar — Update Your Username"
+title: "Update Your Username — PUT /api/usuarios/modificar"
 sidebarTitle: "Update User"
-description: "PUT /api/usuarios/modificar — updates the authenticated user's username. The name must be 6-20 characters. Requires a valid JWT access token."
+description: "Updates the authenticated user's username. Requires nombre, password, and email in the body; only nombre is applied. Returns the updated UsuarioSalidaDTO."
 ---
 
-The Update User endpoint allows an authenticated user to change their own username. Only the `nombre` field is processed by this endpoint — email and password changes are handled through separate authentication flows and cannot be modified here. The new username must be between 6 and 20 characters and must not already be taken by another account. Because the request body is deserialized using `@JsonIgnoreProperties(ignoreUnknown = true)`, any extra fields sent are silently discarded.
+The Update User endpoint allows an authenticated user to change their own username. Only the `nombre` field is acted upon by the server — the `password` and `email` values are accepted by `UsuarioEntradaDTO` but are not processed by this endpoint. However, because `@Valid` validation is applied and all three fields carry `@NotBlank` constraints in the DTO, the request body **must include** `nombre`, `password`, and `email` or the server will respond with `400 Bad Request`. Extra fields not declared on the DTO are silently discarded thanks to `@JsonIgnoreProperties(ignoreUnknown = true)`.
 
-Internally, updating `nombre` also propagates the change to the associated `Participante` profile via the `cambiarNombre()` method on the `Usuario` entity, keeping both records in sync.
+The new username must be between 6 and 20 characters. Internally, updating `nombre` also propagates the change to the associated `Participante` profile via the `cambiarNombre()` method on the `Usuario` entity, keeping both records in sync.
 
 ## Endpoint
 
@@ -14,7 +14,7 @@ Internally, updating `nombre` also propagates the change to the associated `Part
 PUT /api/usuarios/modificar
 ```
 
-**Access:** Requires a valid JWT **access token** in the `Authorization` header.
+**Access:** A valid JWT access token must be supplied in the `Authorization` header. Although `/api/usuarios/**` is listed as `permitAll()` in the security configuration, the endpoint logic calls `AuthDataService` to resolve the authenticated user and will fail if no valid principal is present.
 
 ---
 
@@ -30,17 +30,27 @@ PUT /api/usuarios/modificar
 
 ## Request body
 
-The request body must be valid JSON. Only `nombre` is acted upon by this endpoint; `password` and `email` fields are accepted in the payload (because `UsuarioEntradaDTO` defines them) but are ignored during processing.
+The request body must be valid JSON. All three fields declared on `UsuarioEntradaDTO` carry `@NotBlank` validation constraints and must be present, even though only `nombre` is used when updating the account.
 
 <ParamField body="nombre" type="string" required>
   The new username for the authenticated account. Must be between 6 and 20 characters (inclusive). Must be unique — no other registered user may already have this username.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  Must be provided to pass DTO validation. Must be at least 8 characters and contain at least one digit. This value is not used to change the account's password.
+</ParamField>
+
+<ParamField body="email" type="string" required>
+  Must be provided to pass DTO validation. Must be a valid email address format. This value is not used to change the account's email.
 </ParamField>
 
 ### Example request body
 
 ```json
 {
-  "nombre": "newusername"
+  "nombre": "newusername",
+  "password": "ignored1",
+  "email": "ignored@example.com"
 }
 ```
 
@@ -73,7 +83,7 @@ Returns the updated user as a `UsuarioSalidaDTO` object.
 
 | HTTP status | Condition |
 |---|---|
-| `400 Bad Request` | Validation failure — `nombre` is blank, fewer than 6 characters, or more than 20 characters. |
+| `400 Bad Request` | Validation failure — a required field is blank, `nombre` is fewer than 6 or more than 20 characters, `password` is fewer than 8 characters or lacks a digit, or `email` is not a valid address. |
 | `404 Not Found` | The authenticated user could not be located in the database. |
 | `401 Unauthorized` | The `Authorization` header is missing, the token has expired, or the token signature is invalid. |
 
@@ -103,7 +113,7 @@ Returns the updated user as a `UsuarioSalidaDTO` object.
 curl -X PUT https://api.springcommunity.example/api/usuarios/modificar \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9..." \
   -H "Content-Type: application/json" \
-  -d '{"nombre": "newusername"}'
+  -d '{"nombre": "newusername", "password": "ignored1", "email": "ignored@example.com"}'
 ```
 
 ---

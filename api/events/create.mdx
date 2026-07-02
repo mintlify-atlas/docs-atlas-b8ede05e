@@ -1,7 +1,7 @@
 ---
-title: "POST /api/eventos — Create a New Event"
+title: "Create New Spring Community Event — POST /api/eventos"
 sidebarTitle: "Create Event"
-description: "POST /api/eventos — creates a new community event. Accepts multipart/form-data with an 'evento' JSON part and an optional 'image' file. Returns the created EventoDTO."
+description: "Submit a multipart/form-data request with an 'evento' JSON part and optional banner image to create an event. Returns the full EventoDTO."
 ---
 
 Creating an event requires a `multipart/form-data` request containing two parts: a JSON-encoded `EventoDTO` payload under the key `evento`, and an optional binary image file under the key `image`. The server validates the DTO fields, stores the image if provided, and persists the new event. Upon successful creation the endpoint returns the full `EventoDTO` of the newly created event, including its assigned `id`.
@@ -32,6 +32,7 @@ POST /api/eventos
   - **`tipoEvento`** *(string, optional)* — A category or type label. Maximum 255 characters.
   - **`fechaEvento`** *(string, optional)* — The scheduled date in `YYYY-MM-DD` format. If provided, the date must not be in the past.
   - **`informacion`** *(string, optional)* — Free-text description or details about the event.
+  - **`chat`** *(string, optional)* — A chat identifier or thread reference to associate with the event.
   - **`privado`** *(boolean, optional, default `false`)* — Set to `true` to mark the event as private.
   - **`oculto`** *(boolean, optional, default `false`)* — Set to `true` to hide the event from all general listings.
   - **`maxNumParticipantes`** *(integer, optional, default `255`)* — Maximum number of participants. Must be between `0` and `255` inclusive.
@@ -56,6 +57,7 @@ Returns the full `EventoDTO` of the newly created event. See [Get Event](/api/ev
   "tipoEvento": "hackathon",
   "fechaEvento": "2025-11-15",
   "informacion": "A 24-hour coding challenge open to all skill levels.",
+  "chat": null,
   "imagenEvento": "autumn-hackathon.png",
   "privado": false,
   "oculto": false,

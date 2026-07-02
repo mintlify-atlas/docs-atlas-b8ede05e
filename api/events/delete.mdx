@@ -1,7 +1,7 @@
 ---
-title: "DELETE /api/eventos/delete/{id} — Delete an Event"
+title: "Delete an Event — DELETE /api/eventos/delete/{id}"
 sidebarTitle: "Delete Event"
-description: "DELETE /api/eventos/delete/{id} — permanently deletes a community event and its associated data. Requires a valid JWT access token."
+description: "Permanently remove a community event and all its participant and administrator associations. Returns 200 OK with an empty body on success."
 ---
 
 Deleting an event is a permanent, irreversible operation. When this endpoint is called, the event record is removed from the database along with all of its associated participant memberships and administrator assignments. There is no soft-delete or recovery mechanism — once deleted, the event and its relationships cannot be restored.

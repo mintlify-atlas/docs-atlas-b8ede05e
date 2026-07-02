@@ -1,7 +1,7 @@
 ---
-title: "GET /api/eventos — List All Events"
+title: "List All Spring Community Events — GET /api/eventos"
 sidebarTitle: "List Events"
-description: "GET /api/eventos returns all events as EventoPrincipalDTO summaries. GET /api/eventos/mis-eventos returns only the authenticated participant's events."
+description: "Retrieve all community events as lightweight EventoPrincipalDTO summaries, or scope results to the authenticated participant's own events via /mis-eventos."
 ---
 
 The Events API exposes two listing endpoints. `GET /api/eventos` returns a summary of every event registered in the community, while `GET /api/eventos/mis-eventos` narrows that list to events in which the currently authenticated participant holds a membership. Both endpoints return an array of `EventoPrincipalDTO` objects — lightweight summaries intended for index and card views.

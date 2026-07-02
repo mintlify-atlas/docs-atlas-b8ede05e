@@ -27,7 +27,6 @@ The following variables control the PostgreSQL data source. `DB_URL` and `DB_USE
 | `DB_URL` | `jdbc:postgresql://localhost:5432/communitydb` | Full JDBC connection URL for the PostgreSQL instance. In Docker Compose this is overridden to `jdbc:postgresql://postgres:5432/communitydb` to target the `postgres` service. |
 | `DB_USER` | `postgres` | PostgreSQL login username. Maps to `spring.datasource.username`. |
 | `DB_PASSWORD` | *(none)* | PostgreSQL login password. Maps to `spring.datasource.password`. **Required.** |
-| `spring.datasource.driver-class-name` | `org.postgresql.Driver` | JDBC driver class. Fixed in `application.properties`; not overridable via environment. |
 
 <Note>
   When running with Docker Compose, the `app` service sets `SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/communitydb` and `SPRING_DATASOURCE_USERNAME=postgres` to connect to the companion `postgres` container. The local defaults in `application.properties` are only used when running outside of Docker.
@@ -77,10 +76,6 @@ SPRING_DATASOURCE_PASSWORD=supersecretdbpassword
 
 # JWT signing key — generate with: openssl rand -base64 64
 JWT_SECRET=dGhpcyBpcyBhIHZlcnkgbG9uZyBhbmQgc2VjdXJlIHNlY3JldCBrZXkgZm9yIEpXVA==
-
-# Optional overrides (defaults shown)
-JWT_EXPIRATION=3600000
-JWT_REFRESH_EXPIRATION=604800000
 ```
 
 The `docker-compose.yml` passes these into the `app` service like so:
@@ -102,6 +97,10 @@ services:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=${DB_PASSWORD}
 ```
+
+<Note>
+  `JWT_EXPIRATION` is hardcoded to `36000000` (10 hours) directly in `docker-compose.yml` and is not read from `.env`. The `application.properties` default of `3600000` (1 hour) applies only when running outside of Docker. To change the Docker container value, edit `docker-compose.yml` directly.
+</Note>
 
 <Warning>
   Never commit `JWT_SECRET` or `DB_PASSWORD` to version control. Add `.env` to your `.gitignore` immediately. Exposing these values allows anyone to forge valid authentication tokens or gain direct access to your database.

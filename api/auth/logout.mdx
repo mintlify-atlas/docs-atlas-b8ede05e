@@ -1,7 +1,7 @@
 ---
-title: "POST /auth/logout — Revoke All User Tokens"
+title: "POST /auth/logout — Revoke Tokens and End User Session"
 sidebarTitle: "Logout"
-description: "POST /auth/logout — revokes all active tokens for the authenticated user, ending the session. Requires a valid access token in the Authorization header."
+description: "Revokes all active JWT tokens for the authenticated user, clearing the server-side security context. The client must discard both tokens after logout."
 ---
 
 The logout endpoint ends the current user's session by revoking **all** active tokens associated with their account — not just the token used in the request. Both the access token and the refresh token are marked as expired and revoked in the database, preventing them from being used for any further authenticated requests. After a successful logout the Security context is cleared server-side and the client should discard both tokens locally.
@@ -58,7 +58,7 @@ curl -X POST http://localhost:8080/auth/logout \
 ---
 
 <Note>
-  Logout revokes **all** active tokens for the user, including the refresh token. The client must discard both the `access_token` and `refresh_token` from local storage after calling this endpoint. Attempting to call `/auth/refresh` with the old refresh token after logout will result in a `401 Unauthorized` response.
+  Logout revokes **all** active tokens for the user, including the refresh token. The client must discard both the `access_token` and `refresh_token` from local storage after calling this endpoint. Attempting to call `/auth/refresh` with the old refresh token after logout will result in a `500 Internal Server Error` response because the token is marked as revoked in the database.
 </Note>
 
 <Tip>

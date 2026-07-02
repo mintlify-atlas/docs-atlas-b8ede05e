@@ -1,7 +1,7 @@
 ---
-title: "GET /api/eventos/{id} — Get Event Details"
+title: "Get Spring Community Event — GET /api/eventos/{id}"
 sidebarTitle: "Get Event"
-description: "GET /api/eventos/{id} — retrieves full event details including participant IDs, admin IDs, and all event metadata as an EventoDTO object."
+description: "Look up a community event by numeric ID and receive the complete EventoDTO, including all metadata, participant IDs, and administrator IDs."
 ---
 
 The event detail endpoint returns the complete `EventoDTO` representation of a single event. Unlike the listing endpoints, which return lightweight `EventoPrincipalDTO` summaries, this response includes all editable metadata fields as well as the full lists of participant IDs and administrator IDs associated with the event. Use this endpoint whenever you need to render an event detail view or pre-populate an edit form.
@@ -50,6 +50,10 @@ Returns a single `EventoDTO` JSON object.
   A free-text description or additional information about the event. `null` if not set.
 </ResponseField>
 
+<ResponseField name="chat" type="string">
+  A chat identifier or thread reference associated with the event. `null` if not set.
+</ResponseField>
+
 <ResponseField name="imagenEvento" type="string">
   The server-side filename of the event's banner image. `null` if no image was uploaded.
 </ResponseField>
@@ -85,6 +89,7 @@ Returns a single `EventoDTO` JSON object.
   "tipoEvento": "meetup",
   "fechaEvento": "2025-09-20",
   "informacion": "Monthly gathering for Spring Boot developers. All levels welcome.",
+  "chat": null,
   "imagenEvento": "meetup-banner.png",
   "privado": false,
   "oculto": false,

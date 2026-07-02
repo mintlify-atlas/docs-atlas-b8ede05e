@@ -1,7 +1,7 @@
 ---
 title: "Spring Community Data Model and Entity Relationships"
 sidebarTitle: "Data Model"
-description: "Overview of Spring Community's core entities: Usuario, Participante, Evento, Mensaje, and Token — their fields, relationships, and how they map to the database."
+description: "Core JPA entities in Spring Community — Usuario, Participante, Evento, Mensaje, and Token — with field types, constraints, and database relationships."
 ---
 
 Spring Community follows a Domain-Driven Design approach, organizing its persistence layer around five main JPA-managed entities: `Usuario`, `Participante`, `Evento`, `Mensaje`, and `Token`. Each entity maps to a PostgreSQL table, and relationships between them are expressed through standard JPA annotations — `@OneToOne`, `@ManyToMany`, and `@ManyToOne`. Controllers never expose raw entities to the outside world; instead, every HTTP response is shaped through a dedicated DTO layer mapped by MapStruct, keeping the domain model clean and the API surface intentional.
@@ -136,7 +136,7 @@ Controllers never serialize entity objects directly. All responses pass through 
 
 <CardGroup cols={2}>
   <Card title="EventoDTO" icon="calendar-days">
-    Full event detail, used as both the request body when creating or updating an event and as the response body for single-event lookups. The `participantesEvento` and `administradores` fields are **read-only in responses** — they are populated by the service layer and ignored on write.
+    Full event detail, used as both the request body when creating or updating an event and as the response body for single-event lookups. The `participantesEvento` and `administradores` fields are **read-only in responses** — they are populated by the service layer and ignored on write. The `chat` field is an optional free-text channel identifier stored alongside the event.
 
     ```json
     {
@@ -145,6 +145,7 @@ Controllers never serialize entity objects directly. All responses pass through 
       "tipoEvento": "Meetup",
       "fechaEvento": "2025-09-15",
       "informacion": "Annual Spring Boot community gathering.",
+      "chat": null,
       "imagenEvento": "meetup.png",
       "privado": false,
       "oculto": false,

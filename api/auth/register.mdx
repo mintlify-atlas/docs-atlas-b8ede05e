@@ -1,7 +1,7 @@
 ---
-title: "POST /auth/crear — Register a New User"
+title: "POST /auth/crear — Register a New Community User Account"
 sidebarTitle: "Register"
-description: "POST /auth/crear — creates a new user account and participant profile, then returns a JWT access token and refresh token pair."
+description: "Creates a new user account with username, password, and email. Returns a JWT access token and refresh token to start the session immediately."
 ---
 
 The registration endpoint creates a brand-new user account and, in the same transaction, automatically provisions an associated Participant profile using the same username. On success it returns a signed JWT access token (valid for 1 hour) and a refresh token (valid for 7 days) that the client can use immediately to authenticate subsequent requests.
@@ -70,7 +70,6 @@ A `200 OK` response with a JSON body containing both tokens.
 | Status | Condition |
 |--------|-----------|
 | `400 Bad Request` | Validation failure — e.g., `nombre` is shorter than 6 characters, `password` does not contain a digit, or `email` is not a valid email format. The response body contains a single `mensaje` field with the first validation error message. |
-| `400 Bad Request` | Duplicate `nombre` or `email` — a user with the same username or email address already exists in the database. |
 
 ### Error Response Body
 

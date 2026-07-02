@@ -1,7 +1,7 @@
 ---
-title: "Participants API — Profiles, Friends, and Images"
+title: "Participants REST API — Profiles, Friends, and Images"
 sidebarTitle: "Participants"
-description: "Complete reference for all participant endpoints: list profiles, manage friend relationships, search users, and upload profile images. All routes require authentication."
+description: "Reference for participant endpoints: fetch profiles, manage friends, search users, and upload profile images. Bearer token required on all routes."
 ---
 
 The `/api/participantes/**` routes manage the social profile layer of Spring Community. Every endpoint in this group requires a valid, non-expired ACCESS token passed as a `Bearer` header. A **participant** is the in-app social identity tied to a registered user account — it holds the display name, event memberships, friend list, and profile image. Participant IDs and User IDs are distinct; the `usuarioId` field on a participant record links back to the underlying authentication account.

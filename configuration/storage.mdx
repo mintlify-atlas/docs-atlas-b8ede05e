@@ -1,7 +1,7 @@
 ---
 title: "Image Storage Configuration in Spring Community"
 sidebarTitle: "Storage"
-description: "Spring Community stores event banners and participant profile images on the local filesystem. Learn about the storage layout, path configuration, and how images are served."
+description: "Spring Community filesystem storage: configure the storage root, image directory layout, static serving via /images/**, and multipart upload size limits."
 ---
 
 Spring Community uses local filesystem storage for all uploaded images. Two categories of images are managed: event banners uploaded when creating or editing an event, and participant profile pictures uploaded by users. Each category lives in its own subdirectory under a single configurable root location, making it straightforward to back up, replace, or mount as a Docker volume.

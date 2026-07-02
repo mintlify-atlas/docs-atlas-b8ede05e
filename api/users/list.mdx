@@ -1,10 +1,10 @@
 ---
-title: "GET /api/usuarios — List All Users"
+title: "List All Users — GET /api/usuarios Spring Community"
 sidebarTitle: "List Users"
-description: "GET /api/usuarios — returns a list of all registered users. Each user is returned as a UsuarioSalidaDTO containing their username and email address."
+description: "Retrieve every registered Spring Community user as a JSON array of UsuarioSalidaDTO objects, each containing the account's nombre and email fields."
 ---
 
-The List Users endpoint retrieves every registered user in the Spring Community platform. Use it to populate user directories, admin dashboards, or any view that requires a full enumeration of accounts. Because the response is shaped by `UsuarioSalidaDTO`, sensitive data such as passwords, roles, and tokens are stripped before the array is returned — only the public-facing `nombre` and `email` fields are included.
+The List Users endpoint returns every registered user in the Spring Community platform as a JSON array. Because the response is shaped by `UsuarioSalidaDTO`, sensitive data such as password hashes, roles, and tokens are stripped before the array is returned — only the public-facing `nombre` and `email` fields are included. Use this endpoint to populate user directories, admin dashboards, or any view that requires a full enumeration of accounts.
 
 ## Endpoint
 

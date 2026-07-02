@@ -1,10 +1,10 @@
 ---
-title: "DELETE /api/usuarios/delete — Delete Your Account"
+title: "Delete Your Account — DELETE /api/usuarios/delete"
 sidebarTitle: "Delete User"
-description: "DELETE /api/usuarios/delete — permanently deletes the authenticated user's account and associated participant profile. Requires a valid JWT access token."
+description: "Permanently deletes the authenticated user's account and participant profile. No body or path variable — user ID is resolved from the JWT access token."
 ---
 
-The Delete User endpoint permanently removes the authenticated user's account from Spring Community. This is a destructive, irreversible operation: the `Usuario` record, the linked `Participante` profile, all JWT tokens issued to the account, and any associated data (such as event memberships) are all deleted in a single cascaded database operation via `CuentaService.deleteUsuarioParticipante()`. The caller is identified exclusively from the JWT access token — no ID or body is needed in the request.
+The Delete User endpoint permanently removes the authenticated user's account from Spring Community. This is a destructive, irreversible operation: the `Usuario` record, the linked `Participante` profile, all JWT tokens issued to the account, and any associated data (such as event memberships) are all deleted in a single cascaded database operation via `CuentaService.deleteUsuarioParticipante()`. The caller is identified exclusively from the JWT access token — no ID, path variable, or request body is needed.
 
 ## Endpoint
 
@@ -12,7 +12,7 @@ The Delete User endpoint permanently removes the authenticated user's account fr
 DELETE /api/usuarios/delete
 ```
 
-**Access:** Requires a valid JWT **access token** in the `Authorization` header.
+**Access:** A valid JWT access token must be supplied in the `Authorization` header. Although `/api/usuarios/**` is listed as `permitAll()` in the security configuration, the endpoint logic calls `AuthDataService.obtenerUsuarioAutenticado()` to resolve the user ID from the authentication context and will fail if no valid principal is present.
 
 ---
 

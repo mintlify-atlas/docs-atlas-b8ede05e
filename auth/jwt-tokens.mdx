@@ -1,7 +1,7 @@
 ---
-title: "JWT Token Lifecycle and Refresh Strategy"
+title: "JWT Token Lifecycle, Claims, and Refresh Strategy Guide"
 sidebarTitle: "JWT Tokens"
-description: "Understand Spring Community's JWT access and refresh token structure, expiration defaults, signing algorithm, and how token revocation works via the database."
+description: "Explore Spring Community's JWT access and refresh token claims, expiry defaults, HMAC signing, and how token revocation works server-side."
 ---
 
 Every authenticated interaction with Spring Community is backed by a JSON Web Token signed with an HMAC-SHA algorithm. The platform issues two distinct token types on every login or registration event: an **ACCESS** token for short-lived API authorization and a **REFRESH** token for obtaining a new pair without re-entering credentials. Both token strings are persisted in the `tokens` database table, enabling the server to revoke individual tokens — or all tokens belonging to a user — at any time, regardless of their cryptographic expiry.
@@ -34,7 +34,7 @@ jwt.refresh.expiration=${JWT_REFRESH_EXPIRATION:604800000}
 
 ## JWT Claims
 
-The following claims are embedded in every token by `JwtProviderServiceImpl.buildToken()`. Custom claim names come from the `ClaimJwt` enum.
+The following claims are embedded in every token by `JwtProviderServiceImpl.buildToken()`. Custom claim names come directly from the `ClaimJwt` enum string values.
 
 | Claim key      | `ClaimJwt` constant  | Description                                                        | Example value                          |
 | -------------- | -------------------- | ------------------------------------------------------------------ | -------------------------------------- |

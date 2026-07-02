@@ -1,10 +1,10 @@
 ---
-title: "Authenticate WebSocket Connections with JWT"
+title: "Authenticating WebSocket Connections with JWT in Spring"
 sidebarTitle: "WebSocket Auth"
-description: "Spring Community validates JWT tokens on STOMP WebSocket connections using a channel interceptor. Learn how to connect with a valid access token."
+description: "Spring Community validates JWT access tokens on STOMP CONNECT frames using JwtChannelInterceptor. Learn how to connect and send messages over WebSocket."
 ---
 
-Spring Community exposes a real-time chat system over WebSockets at the `/ws-chat` endpoint using the STOMP sub-protocol. Because WebSocket connections are long-lived and exist outside the normal HTTP request/response cycle, authentication cannot rely on `JwtAuthFilter`. Instead, the server registers `JwtChannelInterceptor` on the inbound channel, which intercepts every STOMP frame before it is processed. When a `CONNECT` frame arrives, the interceptor extracts the JWT from the frame's `Authorization` header, validates it, and binds the resolved username as the Spring Security `Principal` for the duration of the session.
+Spring Community exposes a real-time chat system over WebSockets at the `/ws-chat` endpoint using the STOMP sub-protocol. Because WebSocket connections are long-lived and exist outside the normal HTTP request/response cycle, authentication cannot rely on `JwtAuthFilter`. Instead, the server registers `JwtChannelInterceptor` on the inbound channel, which intercepts every STOMP frame before it is processed. When a `CONNECT` frame arrives, the interceptor extracts the JWT from the frame's `Authorization` native header, validates it, and binds the resolved username as the Spring Security `Principal` for the duration of the session.
 
 ## WebSocket Endpoint
 
@@ -28,7 +28,7 @@ The STOMP endpoint is registered in `WebSocketConfig` with a single allowed orig
 
 ## Connecting with Authentication
 
-`JwtChannelInterceptor.preSend()` intercepts incoming STOMP frames. For `CONNECT` frames it reads the `Authorization` native header, strips the `"Bearer "` prefix, and calls `jwtProviderService.extractUsername(token)`. If a non-null username is returned, a `UsernamePasswordAuthenticationToken` is constructed and set as the session's user via `accessor.setUser()`. This principal is then available in message-handling controllers via the `Principal` parameter.
+`JwtChannelInterceptor.preSend()` intercepts incoming STOMP frames. For `CONNECT` frames only, it reads the `Authorization` native header, strips the `"Bearer "` prefix, and calls `jwtProviderService.extractUsername(token)`. If a non-null username is returned, a `UsernamePasswordAuthenticationToken` is constructed and set as the session's user via `accessor.setUser()`. This principal is then available in message-handling controllers via the `Principal` parameter.
 
 The following JavaScript example uses the `@stomp/stompjs` library to connect and subscribe:
 
@@ -56,7 +56,7 @@ stompClient.activate();
 ```
 
 <Note>
-  Only authenticated participants holding a valid (non-expired, non-revoked) ACCESS token can connect to the WebSocket. Attempting to connect without a token, or with a REFRESH token, will result in no principal being attached to the session, and any subsequent `@MessageMapping` handler that reads `Principal` will fail.
+  The `Authorization` header value is read as a STOMP native header on the `CONNECT` frame. Pass it inside `connectHeaders` when constructing the `StompJs.Client` — this maps directly to the native header that `JwtChannelInterceptor` reads via `accessor.getFirstNativeHeader("Authorization")`. If the header is absent or the token cannot be parsed, no principal is set on the session and any `@MessageMapping` handler that reads `Principal` will receive `null`.
 </Note>
 
 ## Sending Messages

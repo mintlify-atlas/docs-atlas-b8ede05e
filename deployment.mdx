@@ -1,7 +1,7 @@
 ---
-title: "Deploy Spring Community with Docker Compose"
+title: "Docker Compose Deployment Guide for Spring Community API"
 sidebarTitle: "Deployment"
-description: "Deploy Spring Community and PostgreSQL 15 locally or to production using Docker Compose. Covers environment variables, port configuration, and volume setup."
+description: "Deploy Spring Community and PostgreSQL 15 with Docker Compose. Covers required environment variables, port mappings, and volume setup."
 ---
 
 Spring Community ships with two deployment paths: a Docker Compose setup that orchestrates the Spring Boot application and PostgreSQL 15 together in isolated containers, and a direct Maven Wrapper run for developers who prefer a local database. Both approaches rely on the same set of environment variables and produce an identical API surface. Docker Compose is recommended for the fastest, most reproducible setup.
@@ -155,7 +155,7 @@ Spring Community uses **PostgreSQL 15** with a database named **`communitydb`**.
 
 Before deploying to a public-facing environment, review and update the following:
 
-**CORS allowed origins** — Both `AuthController` and `EventoController` carry `@CrossOrigin("http://localhost:4200")` annotations targeting the default Angular development server. Change these to your actual frontend domain. Alternatively, replace the per-controller annotations with a centralised CORS configuration in `WebSecurityConfig` and `WebSocketConfig`:
+**CORS allowed origins** — `AuthController` carries a `@CrossOrigin("http://localhost:4200")` annotation targeting the default Angular development server. Change this to your actual frontend domain, or replace the per-controller annotation with a centralised CORS configuration in `WebSecurityConfig`:
 
 ```java
 // Example: replace localhost:4200 with your production frontend origin

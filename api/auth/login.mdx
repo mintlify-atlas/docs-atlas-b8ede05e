@@ -1,7 +1,7 @@
 ---
-title: "POST /auth/login — Authenticate and Get Tokens"
+title: "POST /auth/login — Authenticate User and Get JWT Tokens"
 sidebarTitle: "Login"
-description: "POST /auth/login — authenticates an existing user by username and password, returning a fresh JWT access token and refresh token pair."
+description: "Authenticates an existing user by username and password. Returns a fresh JWT access token and refresh token, revoking all previously issued tokens."
 ---
 
 The login endpoint authenticates a registered user by verifying their username and password against the stored credentials. On a successful authentication it revokes any previously issued tokens for that user and returns a fresh JWT access token together with a new refresh token, ensuring that only one active session exists at a time.

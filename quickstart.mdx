@@ -1,5 +1,5 @@
 ---
-title: "Get Started with Spring Community API"
+title: "Getting Started with the Spring Community REST API"
 sidebarTitle: "Quickstart"
 description: "Register a user, authenticate, and make your first API calls to Spring Community in under 5 minutes using curl or any HTTP client."
 ---
@@ -42,7 +42,7 @@ Before you begin, make sure the following tools are available on your machine:
   <Step title="Start the application">
     **Option A — Docker Compose (recommended)**
 
-    Docker Compose starts both the Spring Boot application and a PostgreSQL 15 database in one command. It also needs the two secrets from Step 1 and the datasource password passed as `SPRING_DATASOURCE_PASSWORD`:
+    Docker Compose starts both the Spring Boot application and a PostgreSQL 15 database in one command. The `app` container expects the datasource password via `SPRING_DATASOURCE_PASSWORD`, and the `postgres` container expects it via `DB_PASSWORD`:
 
     ```bash
     export SPRING_DATASOURCE_PASSWORD="changeme"
@@ -75,7 +75,7 @@ Before you begin, make sure the following tools are available on your machine:
 
     **Validation constraints (enforced server-side):**
     - `nombre` — required, 6–20 characters, must be unique.
-    - `password` — required, minimum 8 characters, must contain at least one number.
+    - `password` — required, minimum 8 characters, must contain at least one digit.
     - `email` — required, must be a valid email address format, must be unique.
 
     ```bash
@@ -101,7 +101,7 @@ Before you begin, make sure the following tools are available on your machine:
   </Step>
 
   <Step title="Authenticate an existing account">
-    After your first session expires, log in again using `POST /auth/login`. The login payload only requires `nombre` and `password`:
+    After your first session expires, log in again using `POST /auth/login`. The login payload requires only `nombre` and `password` — there is no `email` field on the login request:
 
     ```bash
     curl -s -X POST http://localhost:8080/auth/login \
@@ -136,7 +136,7 @@ Before you begin, make sure the following tools are available on your machine:
       -H "Authorization: Bearer $TOKEN"
     ```
 
-    The response is a JSON array of `EventoPrincipalDTO` objects. On a fresh database it will be an empty array:
+    The response is a JSON array of event objects. On a fresh database it will be an empty array:
 
     ```json
     []
@@ -158,7 +158,7 @@ Before you begin, make sure the following tools are available on your machine:
       -F "image=@/path/to/cover.jpg"
     ```
 
-    The server returns the full `EventoDTO` for the newly created event, including its generated `id`:
+    The server returns the full event DTO for the newly created event, including its generated `id`:
 
     ```json
     {
@@ -172,7 +172,7 @@ Before you begin, make sure the following tools are available on your machine:
     ```
 
     <Note>
-      CORS is currently configured to allow requests only from `http://localhost:4200` (the default Angular dev server). If you are calling the API from a different frontend origin — including a browser-based HTTP client — you will need to update the `@CrossOrigin` origin in `AuthController` and `EventoController`, or configure a global CORS policy in `WebSecurityConfig`.
+      CORS is currently configured to allow requests only from `http://localhost:4200` (the default Angular dev server). If you are calling the API from a different frontend origin — including a browser-based HTTP client — you will need to update the `@CrossOrigin` origin in `AuthController` or configure a global CORS policy in `WebSecurityConfig`.
     </Note>
   </Step>
 

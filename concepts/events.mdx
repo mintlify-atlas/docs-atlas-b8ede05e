@@ -1,7 +1,7 @@
 ---
-title: "Managing Community Events in Spring Community"
+title: "Spring Community Events: Fields, Roles, and Lifecycle"
 sidebarTitle: "Events"
-description: "Community events are the central resource in Spring Community. Learn about event fields, privacy settings, participant management, admin roles, and image uploads."
+description: "Events are the central resource in Spring Community. Explore event fields, privacy flags, participant caps, admin roles, and the full CRUD lifecycle."
 ---
 
 `Evento` is the gravitational centre of the Spring Community platform — it is the resource around which participants gather, administer, and communicate. Every feature in the system, from real-time chat to friend discovery, ultimately connects back to an event. This page covers the full lifecycle of an event: what data it holds, how privacy and visibility work, the distinction between participants and administrators, and exactly how to create, update, and delete events through the REST API.
@@ -17,6 +17,7 @@ The table below documents every field available on an `Evento` entity and its co
 | `tipoEvento`          | String    | Optional, max 255 chars              | A category or type label (e.g., "Meetup", "Workshop", "Hackathon").      |
 | `fechaEvento`         | LocalDate | Optional; must not be in the past   | The date the event takes place. Validated by `validarFecha()` — a past date throws `EventoValidatorException`. |
 | `informacion`         | String    | Optional                             | Free-text description, agenda, or notes for the event.                   |
+| `chat`                | String    | Optional                             | An optional free-text channel identifier stored alongside the event.     |
 | `imagenEvento`        | String    | Read-only (set by server)            | The filename of the uploaded event image. Populated after a successful image upload; clients should not send this field. |
 | `privado`             | boolean   | Optional, default `false`            | When `true`, the event is private — only invited/added participants can see or join it. |
 | `oculto`              | boolean   | Optional, default `false`            | When `true`, the event is hidden from public listings.                   |
